@@ -40,14 +40,7 @@ private:
     std::string first_name = GetName(first_name_history, year, print_history);
     std::string last_name = GetName(last_name_history, year, print_history);
 
-    if (first_name.empty() && last_name.empty())
-      return "Incognito";
-    else if (first_name.empty())
-      return last_name + " with unknown first name";
-    else if (last_name.empty())
-      return first_name + " with unknown last name";
-    else
-      return first_name + ' ' + last_name;
+    return first_name + ' ' + last_name;
   }
 
 
