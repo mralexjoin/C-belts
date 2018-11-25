@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <string>
 
 class ReversibleString {
@@ -7,13 +8,7 @@ public:
     s = _s;
   }
   void Reverse() {
-    size_t upper_bound = s.size() - 1;
-    for (size_t i = 0; i < s.size() / 2; i++) {
-      size_t left = i, right = upper_bound - i;
-      char tmp = s[left];
-      s[left] = s[right];
-      s[right] = tmp;
-    }
+    reverse(begin(s), end(s));
   }
   std::string ToString() const {
     return s;
