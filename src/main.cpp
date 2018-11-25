@@ -4,7 +4,6 @@
 using namespace std;
 
 int main() {
-
   Person person;
 
   person.ChangeFirstName(1965, "Polina");

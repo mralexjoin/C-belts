@@ -1,74 +1,81 @@
 #include <map>
-#include <set>
 #include <string>
+#include <vector>
 
 class Person{
 public:
-  void ChangeFirstName(int year, const std::string& first_name) {
-    first_name_history[year] = first_name;
+  Person() {
+    birth_year = 0;
   }
-  void ChangeLastName(int year, const std::string& last_name) {
-    last_name_history[year] = last_name;
+  Person(const std::string& first_name,
+         const std::string& last_name,
+         const int& person_birth_year) {
+    birth_year = person_birth_year;
+    ChangeFirstName(birth_year, first_name);
+    ChangeLastName(birth_year, last_name);
   }
-  std::string GetFullName(int year) {
+  void ChangeFirstName(const int& year, const std::string& first_name) {
+    if (year >= birth_year)
+      first_name_history[year] = first_name;
+  }
+  void ChangeLastName(const int& year, const std::string& last_name) {
+    if (year >= birth_year)
+      last_name_history[year] = last_name;
+  }
+  std::string GetFullName(int year) const {
     return GetFullNameOptionalHistory(year, false);
   }
-  std::string GetFullNameWithHistory(int year) {
+  std::string GetFullNameWithHistory(int year) const {
     return GetFullNameOptionalHistory(year, true);
   }
 private:
+  int birth_year;
   std::map<int, std::string> first_name_history;
   std::map<int, std::string> last_name_history;
-  std::string GetFullNameOptionalHistory(int year, bool history) {
-    auto first_name_it = first_name_history.upper_bound(year);
-    auto last_name_it = last_name_history.upper_bound(year);
+  std::string GetFullNameOptionalHistory(const int& year,
+                                         const bool& print_history) const {
+    if (year < birth_year)
+      return "No person";
 
-    if (first_name_it == first_name_history.begin()
-        && last_name_it == last_name_history.begin())
+    std::string first_name = GetName(first_name_history, year, print_history);
+    std::string last_name = GetName(last_name_history, year, print_history);
+
+    if (first_name.empty() && last_name.empty())
       return "Incognito";
-    else if (first_name_it == first_name_history.begin())
-      return GetName(last_name_it, last_name_history, history)
-        + " with unknown first name";
-    else if (last_name_it == last_name_history.begin())
-      return GetName(first_name_it, first_name_history, history)
-        + " with unknown last name";
+    else if (first_name.empty())
+      return last_name + " with unknown first name";
+    else if (last_name.empty())
+      return first_name + " with unknown last name";
     else
-      return GetName(first_name_it, first_name_history, history)
-        + ' '
-        + GetName(last_name_it, last_name_history, history);
+      return first_name + ' ' + last_name;
   }
-  std::string GetName(std::map<int, std::string>::iterator it,
-                      const std::map<int, std::string>& m,
-                      bool out_history) {
-    std::string name = (--it)->second;
-    if (out_history) {
-      std::string history = GetHistory(it, m);
-      if (history.size() > 0)
-        name += ' ' + history;
-    }
-    return name;
-  }
-  std::string GetHistory(std::map<int, std::string>::iterator it,
-                         const std::map<int, std::string>& m) {
-    std::set<std::string> printed;
-    std::string history = "";
-    std::string current_name = it->second;
 
-    while (it-- != m.begin()) {
-      if (printed.count(it->second) == 0) {
-        if (printed.size() == 0 && it->second != current_name) {
-          history += it->second;
-          printed.insert(it->second);
-        }
-        else if (printed.size() != 0) {
-          history += ", " + it->second;
-          printed.insert(it->second);
-        }
+
+  std::string GetName(const std::map<int, std::string>& name_history,
+                      const int& year,
+                      const bool& print_history) const {
+    std::vector<std::string> history;
+    std::string name;
+    for (const auto& [history_year, history_name] : name_history) {
+      if (history_year > year)
+        break;
+      if (print_history
+          && (history.size() == 0
+              || history[history.size() - 1] != history_name))
+        history.push_back(history_name);
+      name = history_name;
+    }
+
+    if (history.size() > 1) {
+      std::string history_string;
+      for (int i = history.size() - 2; i >= 0; i--) {
+        if (!history_string.empty())
+          history_string += ", ";
+        history_string += history[i];
       }
+      name += " (" + history_string + ")";
     }
 
-    if (printed.size() > 0)
-      return "(" + history + ")";
-    return "";
+    return name;
   }
 };
