@@ -1,4 +1,5 @@
 #include <map>
+#include <set>
 #include <string>
 
 class Person{
@@ -10,6 +11,15 @@ public:
     last_name_history[year] = last_name;
   }
   std::string GetFullName(int year) {
+    return GetFullNameOptionalHistory(year, false);
+  }
+  std::string GetFullNameWithHistory(int year) {
+    return GetFullNameOptionalHistory(year, true);
+  }
+private:
+  std::map<int, std::string> first_name_history;
+  std::map<int, std::string> last_name_history;
+  std::string GetFullNameOptionalHistory(int year, bool history) {
     auto first_name_it = first_name_history.upper_bound(year);
     auto last_name_it = last_name_history.upper_bound(year);
 
@@ -17,19 +27,48 @@ public:
         && last_name_it == last_name_history.begin())
       return "Incognito";
     else if (first_name_it == first_name_history.begin())
-      return (--last_name_it)->second + " with unknown first name";
+      return GetName(last_name_it, last_name_history, history)
+        + " with unknown first name";
     else if (last_name_it == last_name_history.begin())
-      return (--first_name_it)->second + " with unknown last name";
-    return (--first_name_it)->second + ' ' + (--last_name_it)->second;
+      return GetName(first_name_it, first_name_history, history)
+        + " with unknown last name";
+    else
+      return GetName(first_name_it, first_name_history, history)
+        + ' '
+        + GetName(last_name_it, last_name_history, history);
   }
-private:
-  std::map<int, std::string> first_name_history;
-  std::map<int, std::string> last_name_history;
-  std::map<int, std::string>::iterator
-  GreatestLess(std::map<int, std::string>& m, const int& value) {
-    auto it = m.upper_bound(value);
-    if (it == m.begin())
-      return m.end();
-    return --it;
+  std::string GetName(std::map<int, std::string>::iterator it,
+                      const std::map<int, std::string>& m,
+                      bool out_history) {
+    std::string name = (--it)->second;
+    if (out_history) {
+      std::string history = GetHistory(it, m);
+      if (history.size() > 0)
+        name += ' ' + history;
+    }
+    return name;
+  }
+  std::string GetHistory(std::map<int, std::string>::iterator it,
+                         const std::map<int, std::string>& m) {
+    std::set<std::string> printed;
+    std::string history = "";
+    std::string current_name = it->second;
+
+    while (it-- != m.begin()) {
+      if (printed.count(it->second) == 0) {
+        if (printed.size() == 0 && it->second != current_name) {
+          history += it->second;
+          printed.insert(it->second);
+        }
+        else if (printed.size() != 0) {
+          history += ", " + it->second;
+          printed.insert(it->second);
+        }
+      }
+    }
+
+    if (printed.size() > 0)
+      return "(" + history + ")";
+    return "";
   }
 };
