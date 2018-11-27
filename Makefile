@@ -4,7 +4,7 @@ SRCDIR := src
 BUILDDIR := build
 TARGET := bin/main
 
-SRCEXT := cc
+SRCEXT := cpp
 SOURCES := $(shell find $(SRCDIR) -type f -name *.$(SRCEXT))
 OBJECTS := $(patsubst $(SRCDIR)/%,$(BUILDDIR)/%,$(SOURCES:.$(SRCEXT)=.o))
 CFLAGS := -g

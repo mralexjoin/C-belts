@@ -1,7 +1,5 @@
 #include <iostream>
-#include <map>
-#include <set>
-#include <vector>
+#include <exception>
 using namespace std;
 
 class Rational {
@@ -14,6 +12,9 @@ public:
 
   Rational(int new_numerator, int new_denominator) {
     // Реализуйте конструктор
+    if (new_denominator == 0)
+      throw invalid_argument("Invalid argument");
+
     bool negative = (new_numerator < 0 && new_denominator > 0
                      || new_numerator > 0 && new_denominator < 0);
     int positive_numerator = abs(new_numerator);
@@ -73,11 +74,15 @@ Rational operator-(const Rational& lhs,
 
 // Реализуйте для класса Rational операторы * и /
 Rational operator*(const Rational& lhs, const Rational& rhs) {
-  return {lhs.Numerator() * rhs.Numerator(), lhs.Denominator() * rhs.Denominator()};
+  return {lhs.Numerator() * rhs.Numerator(),
+          lhs.Denominator() * rhs.Denominator()};
 }
 
 Rational operator/(const Rational& lhs, const Rational& rhs) {
-  return {lhs.Numerator() * rhs.Denominator(), lhs.Denominator() * rhs.Numerator()};
+  if (rhs.Numerator() == 0)
+    throw domain_error("Division by zero");
+  return {lhs.Numerator() * rhs.Denominator(),
+          lhs.Denominator() * rhs.Numerator()};
 }
 
 // Реализуйте для класса Rational операторы << и >>
@@ -108,36 +113,28 @@ bool operator<(const Rational& lhs, const Rational& rhs) {
 }
 
 int main() {
-  {
-    const set<Rational> rs = {{1, 2}, {1, 25}, {3, 4}, {3, 4}, {1, 2}};
-    if (rs.size() != 3) {
-      cout << "Wrong amount of items in the set" << endl;
-      return 1;
+  Rational lhs, rhs, result;
+  char operation;
+  cin >> lhs >> operation >> rhs;
+  try {
+    switch (operation) {
+    case '+':
+      result = lhs + rhs;
+      break;
+    case '-':
+      result = lhs - rhs;
+      break;
+    case '*':
+      result = lhs * rhs;
+      break;
+    case '/':
+      result = lhs / rhs;
+      break;
     }
-
-    vector<Rational> v;
-    for (auto x : rs) {
-      v.push_back(x);
-    }
-    if (v != vector<Rational>{{1, 25}, {1, 2}, {3, 4}}) {
-      cout << "Rationals comparison works incorrectly" << endl;
-      return 2;
-    }
+    cout << result << endl;
   }
-
-  {
-    map<Rational, int> count;
-    ++count[{1, 2}];
-    ++count[{1, 2}];
-
-    ++count[{2, 3}];
-
-    if (count.size() != 2) {
-      cout << "Wrong amount of items in the map" << endl;
-      return 3;
-    }
+  catch (exception& ex) {
+    cout << ex.what() << endl;
   }
-
-  cout << "OK" << endl;
   return 0;
 }
