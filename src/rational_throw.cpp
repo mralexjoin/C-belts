@@ -115,8 +115,8 @@ bool operator<(const Rational& lhs, const Rational& rhs) {
 int main() {
   Rational lhs, rhs, result;
   char operation;
-  cin >> lhs >> operation >> rhs;
   try {
+    cin >> lhs >> operation >> rhs;
     switch (operation) {
     case '+':
       result = lhs + rhs;
@@ -133,7 +133,7 @@ int main() {
     }
     cout << result << endl;
   }
-  catch (exception& ex) {
+  catch (const exception& ex) {
     cout << ex.what() << endl;
   }
   return 0;
