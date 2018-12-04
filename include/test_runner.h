@@ -35,7 +35,7 @@ std::ostream& operator << (std::ostream& os, const std::set<T>& s) {
 }
 
 template <class K, class V>
-std::ostream& operator << (std::ostream& os, const std::map<K, V>& m) {
+  std::ostream& operator << (std::ostream& os, const std::map<K, V>& m) {
   os << "{";
   bool first = true;
   for (const auto& kv : m) {
@@ -49,25 +49,23 @@ std::ostream& operator << (std::ostream& os, const std::map<K, V>& m) {
 }
 
 template<class T, class U>
-void AssertEqual(const T& t, const U& u, const std::string& hint = {}) {
+  void AssertEqual(const T& t, const U& u, const std::string& hint = {}) {
   if (t != u) {
     std::ostringstream os;
     os << "Assertion failed: " << t << " != " << u;
     if (!hint.empty()) {
-       os << " hint: " << hint;
+      os << " hint: " << hint;
     }
     throw std::runtime_error(os.str());
   }
 }
 
-void Assert(bool b, const std::string& hint) {
-  AssertEqual(b, true, hint);
-}
+void Assert(bool b, const std::string& hint);
 
 class TestRunner {
-public:
+ public:
   template <class TestFunc>
-  void RunTest(TestFunc func, const std::string& test_name) {
+    void RunTest(TestFunc func, const std::string& test_name) {
     try {
       func();
       std::cerr << test_name << " OK" << std::endl;
@@ -80,13 +78,8 @@ public:
     }
   }
 
-  ~TestRunner() {
-    if (fail_count > 0) {
-      std::cerr << fail_count << " unit tests failed. Terminate" << std::endl;
-      exit(1);
-    }
-  }
+  ~TestRunner();
 
-private:
+ private:
   int fail_count = 0;
 };
