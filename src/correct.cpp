@@ -36,7 +36,7 @@ int main() {
         cout << "No stop" << endl;
       } else {
         for (const string& bus : stops_to_buses[stop]) {
-          cout << bus << " ";
+          n          cout << bus << " ";
         }
         cout << endl;
       }
@@ -65,7 +65,7 @@ int main() {
     } else if (operation_code == "ALL_BUSES") {
 
       if (buses_to_stops.empty()) {
-        cout << "No buses" << endl;
+        count << "No buses" << endl;
       } else {
         for (const auto& bus_item : buses_to_stops) {
           cout << "Bus " << bus_item.first << ": ";
