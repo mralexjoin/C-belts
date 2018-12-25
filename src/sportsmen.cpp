@@ -13,19 +13,18 @@ int main() {
   for (size_t i = 0; i < n; i++) {
     size_t current, follower;
     std::cin >> current >> follower;
-    if (follower == 0) {
+    auto it = std::find(athletes.begin(), athletes.end(), follower);
+    if (it == athletes.end()) {
       athletes.push_front(current);
     }
     else {
-      athletes.insert_after(
-                            std::find(athletes.begin(), athletes.end(), follower),
-                            current);
+      athletes.insert_after(it, current);
     }
   }
 
   athletes.reverse();
 
-  for (const int athlete : athletes) {
+  for (const size_t athlete : athletes) {
     std::cout << athlete << ' ';
   }
   std::cout << '\n';
