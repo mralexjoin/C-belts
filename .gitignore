@@ -16,7 +16,12 @@ GTAGS
 # Ignore emacs backup files
 *~
 \#*\#
+
+# Ignore cmake files
 CMakeCache.txt
 CMakeFiles
 cmake_install.cmake
 Makefile
+
+# Ignore vs files
+.vs
