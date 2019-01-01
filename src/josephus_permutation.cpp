@@ -10,17 +10,19 @@ using namespace std;
 template <typename RandomIt>
 void MakeJosephusPermutation(RandomIt first, RandomIt last, uint32_t step_size) {
   size_t size = last - first;
-  for (size_t permutation_size = 0, cur_pos = 0;
-       permutation_size > 0;
-       permutation_size++) {
-    if (cur_pos != permutation_size) {
-      for (size_t i = permutation_size; i < cur_pos; i++) {
-        typename RandomIt::value_type tmp = move(*(first + i));
-        *(first + i) = move(tmp);
+  for (size_t permutation_size = 0, cur_pos = 0; permutation_size < size;) {
+    if (cur_pos > permutation_size) {
+      typename RandomIt::value_type tmp = move(*(first + permutation_size));
+      *(first + permutation_size) = move(*(first + cur_pos));
+      for (size_t i = cur_pos; i > permutation_size + 1; i--) {
+        *(first + i) = move(*(first + i - 1));
       }
-      *(first + permutation_size) = move(tmp);
+      *(first + permutation_size + 1) = move(tmp);
     }
-    cur_pos = permutation_size + (cur_pos + step_size - 1) % (size - permutation_size);
+    permutation_size++;
+    if (permutation_size < size) {
+      cur_pos = permutation_size + (cur_pos - permutation_size + step_size) % (size - permutation_size);
+    }
   }
 }
 
@@ -41,6 +43,11 @@ void TestIntVector() {
     vector<int> numbers_copy = numbers;
     MakeJosephusPermutation(begin(numbers_copy), end(numbers_copy), 3);
     ASSERT_EQUAL(numbers_copy, vector<int>({0, 3, 6, 9, 4, 8, 5, 2, 7, 1}));
+  }
+  {
+    vector<int> numbers_copy = numbers;
+    MakeJosephusPermutation(begin(numbers_copy), end(numbers_copy), 12);
+    ASSERT_EQUAL(numbers_copy, vector<int>({0, 3, 5, 7, 9, 2, 8, 6, 4, 1}));
   }
 }
 
