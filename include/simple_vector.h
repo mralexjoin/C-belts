@@ -1,61 +1,115 @@
 #pragma once
 
 #include <algorithm>
-#include <cstdlib>
+using namespace std;
 
-// Реализуйте шаблон SimpleVector
 template <typename T>
 class SimpleVector {
- public:
-  SimpleVector() {}
+public:
+  SimpleVector() = default;
+  explicit SimpleVector(size_t size);
+  SimpleVector(const SimpleVector<T>& other);
+  ~SimpleVector();
 
-  explicit SimpleVector(size_t size) :
-  size(size) {
-    Reallocate();
-  }
-  ~SimpleVector() {
-    delete[] data;
-  }
+  T& operator[](size_t index);
+  void operator=(const SimpleVector<T>& other);
 
-  T& operator[](size_t index) {
-    return data[index];
-  }
+  T* begin();
+  T* end();
 
-  T* begin() {
-    return data;
-  }
-  T* end() {
-    return data + size;
-  }
+  const T* begin() const;
+  const T* end() const;
 
-  size_t Size() const {
-    return size;
-  }
-  size_t Capacity() const {
-    return capacity;
-  }
-  void PushBack(const T& value) {
-    if (Size() == Capacity()) {
-      Reallocate();
-    }
-    data[size++] = value;
-  }
+  size_t Size() const;
+  size_t Capacity() const;
+  void PushBack(const T& value);
 
- private:
-  void Reallocate() {
-    if (size == 0) {
-      capacity = 2;
-    }
-    else {
-      capacity = 2 * size;
-    }
-    T* new_data = new T[capacity];
-    if (data != nullptr) {
-      std::copy(begin(), end(), new_data);
-      delete[] data;
-    }
-    data = new_data;
-  }
-  size_t size = 0, capacity = 0;
+private:
   T* data = nullptr;
+  size_t size = 0;
+  size_t capacity = 0;
 };
+
+template <typename T>
+SimpleVector<T>::SimpleVector(size_t size)
+  : data(new T[size])
+  , size(size)
+  , capacity(size)
+{
+}
+
+template <typename T>
+SimpleVector<T>::SimpleVector(const SimpleVector<T>& other) :
+  data(new T[other.capacity]),
+  size(other.size),
+  capacity(other.capacity)
+{
+  copy(other.begin(), other.end(), begin());
+}
+
+template <typename T>
+SimpleVector<T>::~SimpleVector() {
+  delete[] data;
+}
+
+template <typename T>
+T& SimpleVector<T>::operator[](size_t index) {
+  return data[index];
+}
+
+template <typename T>
+void SimpleVector<T>::operator=(const SimpleVector<T>& other) {
+  if (other.size <= capacity) {
+    copy(other.begin(), other.end(), begin());
+    size = other.size;
+  }
+  else {
+    SimpleVector<T> tmp(other);
+    swap(tmp.data, data);
+    swap(tmp.size, size);
+    swap(tmp.capacity, capacity);
+  }
+}
+
+template <typename T>
+size_t SimpleVector<T>::Size() const {
+  return size;
+}
+
+template <typename T>
+size_t SimpleVector<T>::Capacity() const {
+  return capacity;
+}
+
+template <typename T>
+void SimpleVector<T>::PushBack(const T& value) {
+  if (size >= capacity) {
+    auto new_cap = capacity == 0 ? 1 : 2 * capacity;
+    auto new_data = new T[new_cap];
+    copy(begin(), end(), new_data);
+    delete[] data;
+    data = new_data;
+    capacity = new_cap;
+  }
+  data[size++] = value;
+}
+
+template <typename T>
+T* SimpleVector<T>::begin() {
+  return data;
+}
+
+template <typename T>
+T* SimpleVector<T>::end() {
+  return data + size;
+}
+
+template <typename T>
+const T* SimpleVector<T>::begin() const {
+  return data;
+}
+
+template <typename T>
+const T* SimpleVector<T>::end() const {
+  return data + size;
+}
