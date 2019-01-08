@@ -1,7 +1,9 @@
 #include "test_runner.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <list>
 #include <iterator>
 #include <numeric>
 #include <vector>
@@ -10,18 +12,24 @@ using namespace std;
 
 template <typename RandomIt>
 void MakeJosephusPermutation(RandomIt first, RandomIt last, uint32_t step_size) {
-  deque<typename RandomIt::value_type> pool;
-  for (auto it = first; it != last; it++) {
-    pool.push_back(move(*it));
-  }
-  size_t cur_pos = 0;
+  list<typename RandomIt::value_type> pool;
+  move(first, last, back_inserter(pool));
+
+  auto cur_it = pool.begin();
   while (!pool.empty()) {
-    *(first++) = move(pool[cur_pos]);
-    pool.erase(pool.begin() + cur_pos);
-    if (pool.empty()) {
-      break;
+    *(first++) = move(*cur_it);
+    auto next_it = next(cur_it);
+    pool.erase(cur_it);
+    if (!pool.empty()) {
+      size_t remainder = 1;
+      for (; remainder < step_size && next_it != pool.end(); remainder++) {
+        next_it = next(next_it);
+      }
+      if (next_it == pool.end()) {
+        next_it = next(pool.begin(), (step_size - remainder) % pool.size());
+      }
+      cur_it = next_it;
     }
-    cur_pos = (cur_pos + step_size - 1) % pool.size();
   }
 }
 
