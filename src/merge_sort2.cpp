@@ -1,5 +1,6 @@
+#include "test_runner.h"
 #include <algorithm>
-#include <iostream>
+#include <memory>
 #include <vector>
 
 using namespace std;
@@ -20,12 +21,14 @@ void MergeSort(RandomIt range_begin, RandomIt range_end) {
   merge(begin(tmp), end(tmp), end_part_two, end(elements), range_begin);
 }
 
+void TestIntVector() {
+  vector<int> numbers = {6, 1, 3, 9, 1, 9, 8, 12, 1};
+  MergeSort(begin(numbers), end(numbers));
+  ASSERT(is_sorted(begin(numbers), end(numbers)));
+}
+
 int main() {
-  vector<int> v = {6, 4, 7, 6, 4, 4, 0, 1};
-  MergeSort(begin(v), end(v));
-  for (int x : v) {
-    cout << x << " ";
-  }
-  cout << endl;
+  TestRunner tr;
+  RUN_TEST(tr, TestIntVector);
   return 0;
 }
