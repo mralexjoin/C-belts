@@ -9,7 +9,8 @@ template <typename RandomIt>
 void MergeSort(RandomIt range_begin, RandomIt range_end) {
   if (range_end - range_begin <= 2)
     return;
-  vector<typename RandomIt::value_type> elements(range_begin, range_end);
+  vector<typename RandomIt::value_type> elements(make_move_iterator(range_begin),
+                                                 make_move_iterator(range_end));
   int part = elements.size() / 3;
   auto end_part_one = begin(elements) + part;
   auto end_part_two = end_part_one + part;
@@ -17,8 +18,16 @@ void MergeSort(RandomIt range_begin, RandomIt range_end) {
   MergeSort(end_part_one, end_part_two);
   MergeSort(end_part_two, end(elements));
   vector<typename RandomIt::value_type> tmp;
-  merge(begin(elements), end_part_one, end_part_one, end_part_two, back_inserter(tmp));
-  merge(begin(tmp), end(tmp), end_part_two, end(elements), range_begin);
+  merge(make_move_iterator(begin(elements)),
+        make_move_iterator(end_part_one),
+        make_move_iterator(end_part_one),
+        make_move_iterator(end_part_two),
+        back_inserter(tmp));
+  merge(make_move_iterator(begin(tmp)),
+        make_move_iterator(end(tmp)),
+        make_move_iterator(end_part_two),
+        make_move_iterator(end(elements)),
+        range_begin);
 }
 
 void TestIntVector() {
