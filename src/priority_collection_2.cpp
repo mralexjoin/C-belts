@@ -12,9 +12,27 @@ using namespace std;
 
 template <typename T>
 class PriorityCollection {
+private:
+  struct Item {
+    T object;
+    int priority;
+    size_t index;
+  };
+
+  map<size_t, Item> items;
+  // Приватные поля и методы
+  vector<size_t> priority_queue;
+
+  void Exch(const size_t lhs, const size_t rhs);
+  bool Less(const size_t lhs, const size_t rhs) const;
+  void Swim(const size_t id);
+  void Sink(const size_t id);
 public:
-  using Items = map<size_t, pair<T, int>>;
   using Id = size_t;
+
+  PriorityCollection() {
+    priority_queue.push_back(0);
+  }
 
   // Добавить объект с нулевым приоритетом
   // с помощью перемещения и вернуть его идентификатор
@@ -42,25 +60,17 @@ public:
 
   // Аналогично GetMax, но удаляет элемент из контейнера
   pair<T, int> PopMax();
-
-private:
-  // Приватные поля и методы
-  Items items;
-
-  void Exch(const size_t lhs, const size_t rhs) {
-    swap(items[lhs], items[rhs]);
-  }
-  bool Less(const size_t lhs, const size_t rhs) const {
-    return items.at(lhs).second < items.at(rhs).second;
-  }
-  void Swim(const size_t id);
-  void Sink(const size_t id);
 };
 
 template <typename T>
 typename PriorityCollection<T>::Id PriorityCollection<T>::Add(T object) {
-  size_t index = items.size() + 1;
-  items[index] = {move(object), 0};
+  size_t index = 1;
+  if (!items.empty()) {
+    index = items.rbegin()->first + 1;
+  }
+  items[index] = {move(object), 0, index};
+  priority_queue.push_back(index);
+  Swim(index);
   return index;
 }
 
@@ -68,9 +78,11 @@ template <typename T>
 template <typename ObjInputIt, typename IdOutputIt>
 void PriorityCollection<T>::Add(ObjInputIt range_begin, ObjInputIt range_end,
          IdOutputIt ids_begin) {
-  for (auto it = range_begin; it != range_end; it = next(it), ids_begin = next(ids_begin)) {
-    *ids_begin = Add(*it);
+  vector<size_t> indices;
+  for (auto it = range_begin; it != range_end; it = next(it)) {
+    indices.push_back(Add(move(*it)));
   }
+  std::copy(indices.begin(), indices.end(), ids_begin);
 }
 
 template <typename T>
@@ -80,50 +92,56 @@ bool PriorityCollection<T>::IsValid(typename PriorityCollection<T>::Id id) const
 
 template <typename T>
 const T& PriorityCollection<T>::Get(typename PriorityCollection<T>::Id id) const {
-  return items[id].first;
+  return items.at(id).object;
 }
 
 template <typename T>
 pair<const T&, int> PriorityCollection<T>::GetMax() const {
-  return items[1];
+  const Item& item = items.at(priority_queue[1]);
+  return {item.object, item.priority};
 }
 
 template <typename T>
 void PriorityCollection<T>::Promote(PriorityCollection<T>::Id id) {
-  items[id].second++;
-  Swim(id);
-
-  for (const auto& [key, value] : items) {
-    cout << key << ": " << value.first << ", " << value.second << endl;
-  }
-  cout << endl;
+  Item& item = items[id];
+  item.priority++;
+  Swim(item.index);
 }
 
 template <typename T>
 pair<T, int> PriorityCollection<T>::PopMax() {
-  auto max = move(items[1]);
-  items.erase(1);
-  if (!items.empty()) {
-    items[1] = move(items[items.size() + 1]);
-    items.erase(items.size() + 1);
+  size_t max_index = priority_queue[1];
+  if (priority_queue.size() > 2) {
+    items[priority_queue[priority_queue.size() - 1]].index = 1;
+    priority_queue[1] = priority_queue[priority_queue.size() - 1];
+    priority_queue.pop_back();
+
     Sink(1);
   }
+  else {
+    priority_queue.pop_back();
+  }
 
-  return max;
+  auto max_item_iterator = items.find(max_index);
+  pair<T, int> max_item = {move(max_item_iterator->second.object),
+                           max_item_iterator->second.priority};
+  items.erase(max_item_iterator);
+  return max_item;
 }
 
 template <typename T>
 void PriorityCollection<T>::Swim(size_t index) {
   while (index > 1 && Less(index / 2, index)) {
     Exch(index / 2, index);
+    index = index / 2;
   }
 }
 
 template <typename T>
 void PriorityCollection<T>::Sink(size_t id) {
-  while (2 * id <= items.size()) {
+  while (2 * id <= priority_queue.size() - 1) {
     size_t child = 2 * id;
-    if (child < items.size() && Less(child, child + 1)) {
+    if (child < priority_queue.size() - 1 && Less(child, child + 1)) {
       child++;
     }
     if (!Less(id, child)) {
@@ -132,6 +150,25 @@ void PriorityCollection<T>::Sink(size_t id) {
     Exch(child, id);
     id = child;
   }
+}
+
+template <typename T>
+bool PriorityCollection<T>::Less(const size_t lhs, const size_t rhs) const {
+  int left_priority  = items.at(priority_queue[lhs]).priority;
+  int right_priority = items.at(priority_queue[rhs]).priority;
+
+  if (left_priority == right_priority) {
+    return priority_queue[lhs] < priority_queue[rhs];
+  }
+  return left_priority < right_priority;
+}
+
+template <typename T>
+void PriorityCollection<T>::Exch(const size_t lhs, const size_t rhs) {
+  Item& left_item = items[priority_queue[lhs]];
+  Item& right_item = items[priority_queue[rhs]];
+  swap(left_item.index, right_item.index);
+  swap(priority_queue[lhs], priority_queue[rhs]);
 }
 
 class StringNonCopyable : public string {
@@ -156,6 +193,11 @@ void TestNoCopy() {
   }
   strings.Promote(yellow_id);
   {
+    const auto item = strings.GetMax();
+    ASSERT_EQUAL(item.first, "red");
+    ASSERT_EQUAL(item.second, 2);
+  }
+  {
     const auto item = strings.PopMax();
     ASSERT_EQUAL(item.first, "red");
     ASSERT_EQUAL(item.second, 2);
@@ -170,10 +212,121 @@ void TestNoCopy() {
     ASSERT_EQUAL(item.first, "white");
     ASSERT_EQUAL(item.second, 0);
   }
+  {
+    vector<StringNonCopyable> strings2;
+    strings2.push_back("1");
+    strings2.push_back("2");
+    strings2.push_back("3");
+    vector<PriorityCollection<StringNonCopyable>::Id> indices;
+    strings.Add(strings2.begin(), strings2.end(), back_inserter(indices));
+    vector<size_t> expected = {1, 2, 3};
+    ASSERT_EQUAL(indices, expected);
+  }
 }
+
+void MyTests() {
+  PriorityCollection<StringNonCopyable> strings;
+  {
+    const auto white_id = strings.Add("white");
+    const auto yellow_id = strings.Add("yellow");
+    const auto red_id = strings.Add("red");
+
+    strings.Promote(white_id);
+    strings.Promote(red_id);
+    strings.Promote(yellow_id);
+    {
+      const auto item = strings.GetMax();
+      ASSERT_EQUAL(item.first, "red");
+      ASSERT_EQUAL(item.second, 1);
+    }
+    {
+      const auto item = strings.PopMax();
+      ASSERT_EQUAL(item.first, "red");
+      ASSERT_EQUAL(item.second, 1);
+    }
+    {
+      const auto item = strings.GetMax();
+      ASSERT_EQUAL(item.first, "yellow");
+      ASSERT_EQUAL(item.second, 1);
+    }
+    {
+      const auto item = strings.PopMax();
+      ASSERT_EQUAL(item.first, "yellow");
+      ASSERT_EQUAL(item.second, 1);
+    }
+    {
+      const auto item = strings.PopMax();
+      ASSERT_EQUAL(item.first, "white");
+      ASSERT_EQUAL(item.second, 1);
+    }
+
+  }
+  {
+    strings.Add("white");
+    strings.Add("yellow");
+    strings.Add("red");
+    {
+      const auto item = strings.GetMax();
+      ASSERT_EQUAL(item.first, "red");
+      ASSERT_EQUAL(item.second, 0);
+    }
+    {
+      const auto item = strings.PopMax();
+      ASSERT_EQUAL(item.first, "red");
+      ASSERT_EQUAL(item.second, 0);
+    }
+    {
+      const auto item = strings.GetMax();
+      ASSERT_EQUAL(item.first, "yellow");
+      ASSERT_EQUAL(item.second, 0);
+    }
+    {
+      const auto item = strings.PopMax();
+      ASSERT_EQUAL(item.first, "yellow");
+      ASSERT_EQUAL(item.second, 0);
+    }
+    {
+      const auto item = strings.GetMax();
+      ASSERT_EQUAL(item.first, "white");
+      ASSERT_EQUAL(item.second, 0);
+    }
+    {
+      const auto item = strings.PopMax();
+      ASSERT_EQUAL(item.first, "white");
+      ASSERT_EQUAL(item.second, 0);
+    }
+
+    strings.Add("white");
+    const auto yellow_id = strings.Add("yellow");
+    strings.Add("red");
+    strings.Promote(yellow_id);
+    {
+      const auto item = strings.GetMax();
+      ASSERT_EQUAL(item.first, "yellow");
+      ASSERT_EQUAL(item.second, 1);
+    }
+    {
+      const auto item = strings.PopMax();
+      ASSERT_EQUAL(item.first, "yellow");
+      ASSERT_EQUAL(item.second, 1);
+    }
+    {
+      const auto item = strings.GetMax();
+      ASSERT_EQUAL(item.first, "red");
+      ASSERT_EQUAL(item.second, 0);
+    }
+    {
+      const auto item = strings.PopMax();
+      ASSERT_EQUAL(item.first, "red");
+      ASSERT_EQUAL(item.second, 0);
+    }
+  }
+}
+
 
 int main() {
   TestRunner tr;
   RUN_TEST(tr, TestNoCopy);
+  RUN_TEST(tr, MyTests);
   return 0;
 }
