@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <iostream>
 #include <iterator>
+#include <list>
 #include <map>
 #include <memory>
 #include <set>
@@ -13,26 +14,15 @@ using namespace std;
 template <typename T>
 class PriorityCollection {
 private:
-  struct Item {
-    T object;
-    int priority;
-    size_t index;
-  };
+  map<size_t, pair<T, int>> items;
+  map<int, set<size_t>> priorities;
 
-  map<size_t, Item> items;
-  // Приватные поля и методы
-  vector<size_t> priority_queue;
+  size_t MaxIndex() const;
+  size_t NextIndex() const;
+  void InsertNew(size_t index, T object);
 
-  void Exch(const size_t lhs, const size_t rhs);
-  bool Less(const size_t lhs, const size_t rhs) const;
-  void Swim(const size_t id);
-  void Sink(const size_t id);
 public:
   using Id = size_t;
-
-  PriorityCollection() {
-    priority_queue.push_back(0);
-  }
 
   // Добавить объект с нулевым приоритетом
   // с помощью перемещения и вернуть его идентификатор
@@ -64,13 +54,8 @@ public:
 
 template <typename T>
 typename PriorityCollection<T>::Id PriorityCollection<T>::Add(T object) {
-  size_t index = 1;
-  if (!items.empty()) {
-    index = items.rbegin()->first + 1;
-  }
-  items[index] = {move(object), 0, index};
-  priority_queue.push_back(index);
-  Swim(index);
+  size_t index = NextIndex();
+  InsertNew(index, move(object));
   return index;
 }
 
@@ -78,97 +63,73 @@ template <typename T>
 template <typename ObjInputIt, typename IdOutputIt>
 void PriorityCollection<T>::Add(ObjInputIt range_begin, ObjInputIt range_end,
          IdOutputIt ids_begin) {
-  vector<size_t> indices;
-  for (auto it = range_begin; it != range_end; it = next(it)) {
-    indices.push_back(Add(move(*it)));
+  size_t index = NextIndex();
+  for (auto it = range_begin; it != range_end; it++, ids_begin++) {
+    InsertNew(index, move(*it));
+    *ids_begin = index++;
   }
-  std::copy(indices.begin(), indices.end(), ids_begin);
 }
 
 template <typename T>
 bool PriorityCollection<T>::IsValid(typename PriorityCollection<T>::Id id) const {
-  return items.find(id) != items.end();
+  return items.count(id) > 0;
 }
 
 template <typename T>
 const T& PriorityCollection<T>::Get(typename PriorityCollection<T>::Id id) const {
-  return items.at(id).object;
+  return items.at(id).first;
 }
 
 template <typename T>
 pair<const T&, int> PriorityCollection<T>::GetMax() const {
-  const Item& item = items.at(priority_queue[1]);
-  return {item.object, item.priority};
+  return items.at(MaxIndex());
 }
 
 template <typename T>
 void PriorityCollection<T>::Promote(PriorityCollection<T>::Id id) {
-  Item& item = items[id];
-  item.priority++;
-  Swim(item.index);
+  int& priority = items[id].second;
+  auto previous_priority_iterator = priorities.find(priority);
+  previous_priority_iterator->second.erase(id);
+  if (previous_priority_iterator->second.empty()) {
+    priorities.erase(previous_priority_iterator);
+  }
+  priorities[++priority].insert(id);
 }
 
 template <typename T>
 pair<T, int> PriorityCollection<T>::PopMax() {
-  size_t max_index = priority_queue[1];
-  if (priority_queue.size() > 2) {
-    items[priority_queue[priority_queue.size() - 1]].index = 1;
-    priority_queue[1] = priority_queue[priority_queue.size() - 1];
-    priority_queue.pop_back();
+  auto max_priority_iterator = priorities.rbegin();
+  auto max_index_iterator = max_priority_iterator->second.rbegin();
 
-    Sink(1);
-  }
-  else {
-    priority_queue.pop_back();
+  auto max_item_iterator = items.find(*max_index_iterator);
+
+  max_priority_iterator->second.erase(*max_index_iterator);
+  if (max_priority_iterator->second.empty()) {
+    priorities.erase(max_priority_iterator->first);
   }
 
-  auto max_item_iterator = items.find(max_index);
-  pair<T, int> max_item = {move(max_item_iterator->second.object),
-                           max_item_iterator->second.priority};
+  pair<T, int> max_item = move(max_item_iterator->second);
   items.erase(max_item_iterator);
   return max_item;
 }
 
 template <typename T>
-void PriorityCollection<T>::Swim(size_t index) {
-  while (index > 1 && Less(index / 2, index)) {
-    Exch(index / 2, index);
-    index = index / 2;
-  }
+size_t PriorityCollection<T>::MaxIndex() const {
+  return *(priorities.rbegin()->second.rbegin());
 }
 
 template <typename T>
-void PriorityCollection<T>::Sink(size_t id) {
-  while (2 * id <= priority_queue.size() - 1) {
-    size_t child = 2 * id;
-    if (child < priority_queue.size() - 1 && Less(child, child + 1)) {
-      child++;
-    }
-    if (!Less(id, child)) {
-      break;
-    }
-    Exch(child, id);
-    id = child;
+size_t PriorityCollection<T>::NextIndex() const {
+  if (!items.empty()) {
+    return items.rbegin()->first + 1;
   }
+  return 0;
 }
 
 template <typename T>
-bool PriorityCollection<T>::Less(const size_t lhs, const size_t rhs) const {
-  int left_priority  = items.at(priority_queue[lhs]).priority;
-  int right_priority = items.at(priority_queue[rhs]).priority;
-
-  if (left_priority == right_priority) {
-    return priority_queue[lhs] < priority_queue[rhs];
-  }
-  return left_priority < right_priority;
-}
-
-template <typename T>
-void PriorityCollection<T>::Exch(const size_t lhs, const size_t rhs) {
-  Item& left_item = items[priority_queue[lhs]];
-  Item& right_item = items[priority_queue[rhs]];
-  swap(left_item.index, right_item.index);
-  swap(priority_queue[lhs], priority_queue[rhs]);
+void PriorityCollection<T>::InsertNew(size_t index, T object) {
+  items[index] = {move(object), 0};
+  priorities[0].insert(index);
 }
 
 class StringNonCopyable : public string {
@@ -188,10 +149,12 @@ void TestNoCopy() {
   const auto red_id = strings.Add("red");
 
   strings.Promote(yellow_id);
+
   for (int i = 0; i < 2; ++i) {
     strings.Promote(red_id);
   }
   strings.Promote(yellow_id);
+
   {
     const auto item = strings.GetMax();
     ASSERT_EQUAL(item.first, "red");
@@ -212,6 +175,7 @@ void TestNoCopy() {
     ASSERT_EQUAL(item.first, "white");
     ASSERT_EQUAL(item.second, 0);
   }
+
   {
     vector<StringNonCopyable> strings2;
     strings2.push_back("1");
@@ -219,9 +183,10 @@ void TestNoCopy() {
     strings2.push_back("3");
     vector<PriorityCollection<StringNonCopyable>::Id> indices;
     strings.Add(strings2.begin(), strings2.end(), back_inserter(indices));
-    vector<size_t> expected = {1, 2, 3};
+    vector<size_t> expected = {0, 1, 2};
     ASSERT_EQUAL(indices, expected);
   }
+
 }
 
 void MyTests() {
