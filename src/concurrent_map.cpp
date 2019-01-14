@@ -2,11 +2,17 @@
 #include "profile.h"
 
 #include <algorithm>
+#include <future>
 #include <numeric>
 #include <vector>
 #include <string>
 #include <random>
 using namespace std;
+
+template <typename T>
+auto Abs(const T& value) {
+  return value > 0 ? value : -value;
+}
 
 template <typename K, typename V>
 class ConcurrentMap {
@@ -14,14 +20,34 @@ public:
   static_assert(is_integral_v<K>, "ConcurrentMap supports only integer keys");
 
   struct Access {
+    Access(mutex& m, map<K, V>& concurrent_map, const K& key) :
+      guard(m),
+      ref_to_value(concurrent_map[key]) {}
+    lock_guard<mutex> guard;
     V& ref_to_value;
   };
 
-  explicit ConcurrentMap(size_t bucket_count);
+  explicit ConcurrentMap(size_t bucket_count) :
+    maps(bucket_count),
+    mutexes(bucket_count) {}
 
-  Access operator[](const K& key);
+  Access operator[](const K& key) {
+    size_t bucket = Abs(key) % maps.size();
+    return {mutexes[bucket], maps[bucket], key};
+  }
 
-  map<K, V> BuildOrdinaryMap();
+  map<K, V> BuildOrdinaryMap() {
+    map<K, V> ordinary_map;
+    for (const auto& concurrent_map : maps) {
+      for (const auto& item : concurrent_map) {
+        ordinary_map[item.first] = operator[](item.first).ref_to_value;
+      }
+    }
+    return ordinary_map;
+ }
+private:
+  vector<map<K, V>> maps;
+  vector<mutex> mutexes;
 };
 
 void RunConcurrentUpdates(
