@@ -23,15 +23,9 @@ void TestFunctionality(
   istringstream queries_input(Join('\n', queries));
 
   SearchServer srv;
-  {
-    LOG_DURATION("UpdateDocumentBase");
-    srv.UpdateDocumentBase(docs_input);
-  }
+  srv.UpdateDocumentBase(docs_input);
   ostringstream queries_output;
-  {
-    LOG_DURATION("AddQueriesStream");
-    srv.AddQueriesStream(queries_input, queries_output);
-  }
+  srv.AddQueriesStream(queries_input, queries_output);
 
   //cout << queries_output.str() << endl;
   const string result = queries_output.str();
@@ -208,6 +202,55 @@ void TestBasicSearch() {
   TestFunctionality(docs, queries, expected);
 }
 
+void MyTest() {
+  const string chars = "abcdefghijklmnopqrstuvwxyz";
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dis1(0, chars.size() - 1);
+
+  vector<string> words(10'000);
+  for (string& word : words) {
+    ostringstream ss;
+    for (size_t i = 0; i < 50; i++) {
+      ss << chars[dis1(gen)];
+    }
+    word = ss.str();
+  }
+
+  std::uniform_int_distribution<> dis2(0, words.size() - 1);
+  ostringstream docs;
+  for (size_t i = 0; i < 50'000; i++) {
+    if (i != 0) {
+      docs << '\n';
+    }
+    for (size_t j = 0; j < 100; j++) { 
+      docs << words[dis2(gen)] << " ";
+    }
+  }
+
+  ostringstream queries;
+  for (size_t i = 0; i < 500'000; i++) {
+    if (i != 0) {
+      queries << '\n';
+    }
+    for (size_t j = 0; j < 10; j++) { 
+      queries << words[dis2(gen)] << " ";
+    }
+  }
+
+  {
+    LOG_DURATION("Full duration");
+    istringstream docs_input(docs.str());
+    istringstream queries_input(queries.str());
+
+    SearchServer srv;
+    srv.UpdateDocumentBase(docs_input);
+    ostringstream queries_output;
+    srv.AddQueriesStream(queries_input, queries_output);
+  }
+}
+
 int main() {
   TestRunner tr;
   RUN_TEST(tr, TestSerpFormat);
@@ -215,4 +258,5 @@ int main() {
   RUN_TEST(tr, TestHitcount);
   RUN_TEST(tr, TestRanking);
   RUN_TEST(tr, TestBasicSearch);
+  RUN_TEST(tr, MyTest);
 }
