@@ -1,41 +1,39 @@
 #include "search_server.h"
 #include "iterator_range.h"
+//#include "profile.h"
 
 #include <algorithm>
+#include <array>
+#include <future>
 #include <iterator>
 #include <sstream>
 #include <iostream>
 #include <queue>
-#include <list>
 
-list<string> SplitIntoWords(string_view line) {
-  list<string> words;
-  while (!line.empty()) {
-    const size_t word_start = line.find_first_not_of(SearchServer::SPACE);
-    if (word_start == line.npos) {
-      break;
-    }
-    if (word_start > 0) {
-      line.remove_prefix(word_start);
-    }
-    const size_t word_end = line.find(SearchServer::SPACE);
-    string_view word = line.substr(0, word_end);
-    words.push_back(string(word));
-    if (word_end == line.npos) {
-      break;
-    }
-    line.remove_prefix(word_end);
+//TotalDuration parse("Total parse");
+
+map<string, uint32_t> SplitIntoWords(string& line) {
+  istringstream iss(line);
+  map<string, uint32_t> unique_words;
+  for (string& word : vector<string>{istream_iterator<string>(iss), istream_iterator<string>()}) {
+    unique_words[move(word)]++;
   }
-  return words;
+  return unique_words;
 }
 
-void InvertedIndex::Add(string& document) {
-  docs.push_back(move(document));
-
-  const size_t docid = docs.size() - 1;
-  for (string& word : SplitIntoWords(docs[docid])) {
-    index[move(word)][docid]++;
+void InvertedIndex::Add(string& current_document) {
+  for (auto& [word, count] : SplitIntoWords(current_document)) {
+    index[move(word)][size] += count;
   }
+  size++;
+}
+
+const map<uint32_t, uint32_t>& InvertedIndex::Lookup(const string& word) const {
+  auto it = index.find(word);
+  if (it != index.end()) {
+    return it->second;
+  }
+  return empty_index;
 }
 
 SearchServer::SearchServer(istream& document_input) {
@@ -55,41 +53,38 @@ void SearchServer::UpdateDocumentBase(istream& document_input) {
 void SearchServer::AddQueriesStream(
   istream& query_input, ostream& search_results_output
 ) {
+  constexpr size_t RESULTS_SIZE = 5;
+  constexpr auto COMPARATOR = 
+                [] (const pair<uint32_t, uint32_t>& lhs, const pair<uint32_t, uint32_t>& rhs) {
+                   return lhs.second == rhs.second ? lhs.first < rhs.first : lhs.second > rhs.second;
+                 };
+  vector<pair<uint32_t, uint32_t>> docid_count;
   for (string current_query; getline(query_input, current_query); ) {
-    map<size_t, size_t> docid_count;
-
-    for (const string& word : SplitIntoWords(current_query)) {
-      if (index.WordIndexed(word)) {
-        for (const auto& [docid, hits] : index.Lookup(word)) {
-          docid_count[docid] += hits;
-        }
+    docid_count.assign(index.Size(), {0, 0});
+    for (const auto& [word, count] : SplitIntoWords(current_query)) {
+      for (const auto& [docid, hits] : index.Lookup(word)) {
+        docid_count[docid].first = docid;
+        docid_count[docid].second += count * hits;
       }
     }
 
-    auto comparator = [](const pair<size_t, size_t>& lhs,
-                         const pair<size_t, size_t>& rhs) {
-                        if (lhs.second == rhs.second) {
-                          return lhs.first > rhs.first;
-                        }
-                        return lhs.second < rhs.second;
-                      };
-    vector<pair<size_t, size_t>> queue_container;
-    queue_container.reserve(docid_count.size());
-    priority_queue<pair<size_t, size_t>,
-                   vector<pair<size_t, size_t>>,
-                   decltype(comparator)>
-      search_results(move_iterator(docid_count.begin()),
-                     move_iterator(docid_count.end()),
-                     comparator,
-                     move(queue_container));
-
-    search_results_output << current_query << ':';
-    for (size_t i = 0; i < 5 && !search_results.empty(); i++) {
-      pair<size_t, size_t> item = search_results.top();
+    if (docid_count.size() < RESULTS_SIZE) {
+      sort(docid_count.begin(), docid_count.end(), COMPARATOR);
+    }
+    else {
+      partial_sort(docid_count.begin(),
+                   docid_count.begin() + RESULTS_SIZE, 
+                   docid_count.end(),
+                   COMPARATOR);
+    }
+    search_results_output << current_query << ":";
+    for (uint32_t i = 0; i < min(RESULTS_SIZE, docid_count.size()); i++) {
+      if (docid_count[i].second == 0) {
+        break;
+      }
       search_results_output << " {"
-                            << "docid: " << item.first << ", "
-                            << "hitcount: " << item.second << '}';
-      search_results.pop();
+                            << "docid: " << docid_count[i].first << ", "
+                            << "hitcount: " << docid_count[i].second << '}';
     }
     search_results_output << endl;
   }

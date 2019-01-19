@@ -1,6 +1,7 @@
 #include "search_server.h"
 #include "parse.h"
 #include "test_runner.h"
+#include "profile.h"
 
 #include <algorithm>
 #include <iterator>
@@ -22,9 +23,15 @@ void TestFunctionality(
   istringstream queries_input(Join('\n', queries));
 
   SearchServer srv;
-  srv.UpdateDocumentBase(docs_input);
+  {
+    LOG_DURATION("UpdateDocumentBase");
+    srv.UpdateDocumentBase(docs_input);
+  }
   ostringstream queries_output;
-  srv.AddQueriesStream(queries_input, queries_output);
+  {
+    LOG_DURATION("AddQueriesStream");
+    srv.AddQueriesStream(queries_input, queries_output);
+  }
 
   //cout << queries_output.str() << endl;
   const string result = queries_output.str();
