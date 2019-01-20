@@ -20,7 +20,7 @@ if (MSVC)
   set(CMAKE_CXX_FLAGS "/Wall /WX /std:c++17")
   set(CMAKE_CXX_FLAGS_DEBUG "/Zi")
 else()
-  set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -std=c++17")
+  set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -std=c++17 -pthread")
   set(CMAKE_CXX_FLAGS_DEBUG "-g")
 endif()
 
