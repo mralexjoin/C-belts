@@ -1,10 +1,20 @@
 #include "test_runner.h"
+#include "profile.h"
 
-#include <memory>
 #include <iostream>
+#include <list>
 #include <map>
+#include <random>
 #include <string>
+#include <string_view>
 #include <unordered_map>
+
+ TotalDuration put("Put");
+ TotalDuration erase("Erase");
+ TotalDuration get_by_id("Get by id");
+ TotalDuration by_timestamp("Range by timestamp");
+ TotalDuration by_karma("Range by karma");
+ TotalDuration by_user("Range by user");
 
 using namespace std;
 
@@ -16,16 +26,8 @@ struct Record {
   int karma;
 };
 
-// Реализуйте этот класс
 class Database {
 public:
-  enum class IndexFields {
-    TIMESTAMP,
-    KARMA,
-    USER,
-    END
-  };
-
   bool Put(const Record& record);
   const Record* GetById(const string& id) const;
   bool Erase(const string& id);
@@ -39,150 +41,91 @@ public:
   template <typename Callback>
   void AllByUser(const string& user, Callback callback) const;
 private:
-  
-  class Index {
-  private:
-    class IndexKey {
-    public:
-      IndexKey(const string& value) : string_value(value) {}
-      IndexKey(const int value) : int_value(value) {}
-      bool operator<(const IndexKey& other) const {
-        return tuple(string_value, int_value) < tuple(other.string_value, other.int_value);
-      }
-    private:
-      const string string_value;
-      const int int_value = 0;
-    };
+  using Records = list<Record>;
+  using IntIndex = multimap<int, Records::iterator>;
+  using StringIndex = multimap<string_view, Records::iterator>;
+  using IndexIterators = tuple<Records::iterator, IntIndex::iterator, IntIndex::iterator, StringIndex::iterator>;
+  using PrimaryIndex = unordered_map<string_view, IndexIterators>;
 
-    IndexKey CreateIndexKey(const Record& record, IndexFields field);
-    array<multimap<IndexKey, string>, static_cast<size_t>(IndexFields::END)> index;
-  public:
-    void Put(const Record& record);
-    void Erase(const Record& record);
-    const multimap<IndexKey, string>& Get(const IndexFields field) const {
-      return index[static_cast<size_t>(field)];
-    }
-    template<typename T>
-    static IndexKey CreateIndexKey(const T& value, IndexFields field);
-  };
-
-  template <typename Callback>
-  void RangeByIndexField(IndexFields field, int low, int high, Callback callback) const;
-
-  template <typename Callback>
-  void AllByIndexField(IndexFields field, const string& user, Callback callback) const;
-
-  Index index;
-  unordered_map<string, Record> records;
+  Records records;
+  PrimaryIndex primary_index;
+  IntIndex timestamp_index;
+  IntIndex karma_index;
+  StringIndex user_index;
 };
 
-Database::Index::IndexKey Database::Index::CreateIndexKey(const Record& record,
-                                                           IndexFields field) {
-  switch(field) {
-    case IndexFields::TIMESTAMP:
-      return IndexKey(record.timestamp);
-    case IndexFields::KARMA:
-      return IndexKey(record.karma);
-    case IndexFields::USER:
-      return IndexKey(record.user);
-    case IndexFields::END:
-    default:
-      throw invalid_argument("Not implemented");
-  }
-}
-
-template<typename T>
-Database::Index::IndexKey Database::Index::CreateIndexKey(const T& value, IndexFields field) {
-  switch(field) {
-    case IndexFields::TIMESTAMP:
-    case IndexFields::KARMA:
-      return IndexKey(value);
-    case IndexFields::USER:
-      return IndexKey(value);
-    case IndexFields::END:
-    default:
-      throw invalid_argument("Not implemented");
-  }
-}
-
-void Database::Index::Put(const Record& record) {
-  for (size_t i = 0; i < static_cast<size_t>(IndexFields::END); i++) {
-    index[i].insert(
-        { CreateIndexKey(record, static_cast<IndexFields>(i)), record.id }
-        );
-  }
-}
-
-void Database::Index::Erase(const Record& record) {
-  for (size_t i = 0; i < static_cast<size_t>(IndexFields::END); i++) {
-    auto [begin, end] = index[i].equal_range(
-        CreateIndexKey(record, static_cast<IndexFields>(i)));
-    for (auto it = begin; it != end; it++) {
-      if (it->second == record.id) {
-        index[i].erase(it);
-        break;
-      }
-    }
-  }
-}
-
 bool Database::Put(const Record& record) {
-  if (records.count(record.id) > 0) {
+   ADD_DURATION(put);
+  if (primary_index.find(record.id) != primary_index.end()) {
     return false;
   }
-  records[record.id] = record;
-  index.Put(record);
+  records.push_front(record);
+  auto it = records.begin();
+  primary_index.insert(
+    {
+      it->id, 
+      {
+        it,
+        timestamp_index.insert({it->timestamp, it}),
+        karma_index.insert({it->karma, it}),
+        user_index.insert({it->user, it})
+      }
+    }
+  );
   return true;
 }
 
 const Record* Database::GetById(const string& id) const {
-  auto it = records.find(id);
-  if (it == records.end()) {
+   ADD_DURATION(get_by_id);
+  auto it = primary_index.find(id);
+  if (it == primary_index.end()) {
     return nullptr;
   }
-  return &(it->second);
+  return &(*(get<0>(it->second)));
 }
 
 bool Database::Erase(const string& id) {
-  auto it = records.find(id);
-  if (it == records.end()) {
+   ADD_DURATION(erase);
+  auto it = primary_index.find(id);
+  if (it == primary_index.end()) {
     return false;
   }
-  index.Erase(it->second);
-  records.erase(it);
+
+  IndexIterators& iterators = it->second;
+
+  timestamp_index.erase(get<1>(iterators));
+  karma_index.erase(get<2>(iterators));
+  user_index.erase(get<3>(iterators));
+  records.erase(get<0>(iterators));
+  primary_index.erase(it);
   return true;
 }
 
 template <typename Callback>
-void Database::RangeByIndexField(IndexFields field, int low, int high, Callback callback) const {
+void Database::RangeByTimestamp(int low, int high, Callback callback) const {
+   ADD_DURATION(by_timestamp);
   if (low <= high) {
-    auto current_index = index.Get(field);
-    auto first = current_index.lower_bound(Index::CreateIndexKey(low, field));
-    auto last = current_index.upper_bound(Index::CreateIndexKey(high, field));
-    for (auto it = first; it != last && callback(records.at(it->second)); it++);
+    auto first = timestamp_index.lower_bound(low);
+    auto last = timestamp_index.upper_bound(high);
+    for (auto it = first; it != last && callback(*it->second); it++);
   }
 }
 
 template <typename Callback>
-void Database::AllByIndexField(IndexFields field, const string& value, Callback callback) const {
-  auto current_index = index.Get(field);
-  auto [first, last] = current_index.equal_range(Index::CreateIndexKey(value, field));
-  for (auto it = first; it != last && callback(records.at(it->second)); it++);
-}
-
-template <typename Callback>
-void Database::RangeByTimestamp(int low, int high, Callback callback) const {
-  RangeByIndexField(IndexFields::TIMESTAMP, low, high, callback);
-}
-
-template <typename Callback>
 void Database::RangeByKarma(int low, int high, Callback callback) const {
-  RangeByIndexField(IndexFields::KARMA, low, high, callback);
+   ADD_DURATION(by_karma);
+  if (low <= high) {
+    auto first = karma_index.lower_bound(low);
+    auto last = karma_index.upper_bound(high);
+    for (auto it = first; it != last && callback(*it->second); it++);
+  }
 }
 
 template <typename Callback>
 void Database::AllByUser(const string& user, Callback callback) const {
-  AllByIndexField(IndexFields::USER, user, callback);
+   ADD_DURATION(by_user);
+  auto [first, last] = user_index.equal_range(user);
+  for (auto it = first; it != last && callback(*it->second); it++);
 }
 
 void TestRangeBoundaries() {
@@ -229,10 +172,38 @@ void TestReplacement() {
   ASSERT_EQUAL(final_body, record->title);
 }
 
+void TestEfficiency() {
+  Database db;
+
+  size_t N = 5'000'000;
+
+  random_device rd;
+  mt19937 gen(rd());
+  uniform_int_distribution<> dis(1, N);
+  uniform_int_distribution<> dis2(0, 2);
+  string dict = "abcdefghijklmnopqrstuvwxyz";
+  for (size_t i = 0; i < 1'000'000; i++) {
+    switch (dis2(gen)) {
+      case 0: {
+        Record record = {to_string(dis(gen)), to_string(dis(gen)), to_string(dis(gen)), dis(gen), dis(gen)};
+        db.Put(record);
+        break;
+      }
+      case 1:
+        db.Erase(to_string(dis(gen)));
+        break;
+      case 2:
+        db.GetById(to_string(dis(gen)));
+        break;
+    }
+  }
+}
+
 int main() {
   TestRunner tr;
   RUN_TEST(tr, TestRangeBoundaries);
   RUN_TEST(tr, TestSameUser);
   RUN_TEST(tr, TestReplacement);
+  RUN_TEST(tr, TestEfficiency);
   return 0;
 }
