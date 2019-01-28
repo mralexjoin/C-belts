@@ -43,7 +43,15 @@ ostream& operator<<(ostream& output, const Gender& gender) {
 class People {
 public:
   int64_t UpperAge(int age) {
-    return upper_age_count[age];
+    auto adult_begin = lower_bound(
+      persons.begin(),
+      persons.end(),
+      age,
+      [](const Person& lhs, int age) {
+        return lhs.age < age;
+      }
+    );
+    return distance(adult_begin, persons.end());
   }
   int64_t Wealhiest(size_t count) {
     return max_income[count >= max_income.size() ? max_income.size() - 1 : count - 1];
@@ -61,7 +69,6 @@ private:
   };
 
   vector<Person> persons;
-  vector<int64_t> upper_age_count;
   vector<int64_t> max_income;
   array<string, static_cast<size_t>(Gender::END)> popular_names;
 
@@ -89,23 +96,10 @@ istream& operator>>(istream& input, People& people) {
 }
 
 void People::UpdateStats() {
-  map<int, int64_t> age_counter;
-  for (const Person& person : persons) {
-    age_counter[person.age]++;
-  }
-  if (!age_counter.empty()) {
-    upper_age_count.resize(age_counter.rbegin()->first + 1, 0);
-  }
-  int64_t sum = 0;
-  for (int64_t i = upper_age_count.size() - 1; i >= 0; i--) {
-    sum += age_counter[i];
-    upper_age_count[i] = sum;
-  }
-  
   sort(persons.begin(), persons.end(), [] (const Person& lhs, const Person& rhs) {
     return lhs.income > rhs.income;
   });
-  sum = 0;
+  int64_t sum = 0;
   max_income.resize(persons.size(), 0);
   for (size_t i = 0; i < persons.size(); i++) {
     sum += persons[i].income;
@@ -122,18 +116,19 @@ void People::UpdateStats() {
                           names[i].end(), 
                           [](const pair<string_view, size_t>& lhs, 
                              const pair<string_view, size_t>& rhs){
-      if (lhs.second < rhs.second) {
-        return true;
+      if (lhs.second == rhs.second) {
+        return lhs.first > rhs.first;
       }
-      if (rhs.first > rhs.first) {
-        return true;
-      }
-      return false;
+      return lhs.second < rhs.second;
     });
     if (it != names[i].end()) {
       popular_names[i] = string(it->first);
     }
   }
+
+  sort(persons.begin(), persons.end(), [] (const Person& lhs, const Person& rhs) {
+    return lhs.age < rhs.age;
+  });
 }
 
 enum class Commands {
