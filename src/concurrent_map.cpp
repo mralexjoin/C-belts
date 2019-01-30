@@ -25,37 +25,35 @@ public:
     lock_guard<mutex> guard;
     U& ref_to_value;
   };
+
+  struct WriteAccess : public Access<V> {};
+  struct ReadAccess : public Access<const V> {};
   
   explicit ConcurrentMap(size_t bucket_count) :
     maps(bucket_count),
     mutexes(bucket_count) {}
 
-  Access<V> operator[](const K& key) {
+  WriteAccess operator[](const K& key) {
     size_t bucket = GetBucket(key);
     return {lock_guard(mutexes[bucket]), maps[bucket][key]};
   }
 
-  Access<const V> at(const K& key) const {
+  ReadAccess At(const K& key) const {
     size_t bucket = GetBucket(key);
     return {lock_guard(mutexes[bucket]), maps[bucket].at(key)};
   }
 
   bool Has(const K& key) const {
-    size_t bucket = GetBucket(key);
-    lock_guard guard(mutexes[bucket]);
-    return maps[bucket].count(key) > 0;
+    return maps[GetBucket(key)].count(key) > 0;
   }
 
   MapType BuildOrdinaryMap() const {
     MapType ordinary_map;
     for (size_t i = 0; i < maps.size(); i++) {
       auto& current_map = maps[i];
+      lock_guard guard(mutexes[i]);
       for (const auto& [key, value] : current_map) {
-        lock_guard guard(mutexes[i]);
-        auto it = current_map.find(key);
-        if (it != current_map.end()) {
-          ordinary_map[it->first] = it->second;
-        }
+        ordinary_map[key] = value;
       }
     }
     return ordinary_map;
