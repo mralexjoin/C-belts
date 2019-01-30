@@ -25,3 +25,7 @@ Makefile
 
 # Ignore vs files
 .vs
+.vscode
+
+# Ignore archives
+*.zip
