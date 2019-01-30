@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include <random>
+#include <unordered_map>
 using namespace std;
 
 template <typename T>
@@ -14,40 +15,59 @@ auto Abs(const T& value) {
   return value > 0 ? value : -value;
 }
 
-template <typename K, typename V>
+template <typename K, typename V, typename Hash = std::hash<K>>
 class ConcurrentMap {
 public:
-  static_assert(is_integral_v<K>, "ConcurrentMap supports only integer keys");
+  using MapType = unordered_map<K, V, Hash>;
 
+  template<typename U>
   struct Access {
-    Access(mutex& m, map<K, V>& concurrent_map, const K& key) :
-      guard(m),
-      ref_to_value(concurrent_map[key]) {}
     lock_guard<mutex> guard;
-    V& ref_to_value;
+    U& ref_to_value;
   };
-
+  
   explicit ConcurrentMap(size_t bucket_count) :
     maps(bucket_count),
     mutexes(bucket_count) {}
 
-  Access operator[](const K& key) {
-    size_t bucket = Abs(key) % maps.size();
-    return {mutexes[bucket], maps[bucket], key};
+  Access<V> operator[](const K& key) {
+    size_t bucket = GetBucket(key);
+    return {lock_guard(mutexes[bucket]), maps[bucket][key]};
   }
 
-  map<K, V> BuildOrdinaryMap() {
-    map<K, V> ordinary_map;
-    for (const auto& concurrent_map : maps) {
-      for (const auto& item : concurrent_map) {
-        ordinary_map[item.first] = operator[](item.first).ref_to_value;
+  Access<const V> at(const K& key) const {
+    size_t bucket = GetBucket(key);
+    return {lock_guard(mutexes[bucket]), maps[bucket].at(key)};
+  }
+
+  bool Has(const K& key) const {
+    size_t bucket = GetBucket(key);
+    lock_guard guard(mutexes[bucket]);
+    return maps[bucket].count(key) > 0;
+  }
+
+  MapType BuildOrdinaryMap() const {
+    MapType ordinary_map;
+    for (size_t i = 0; i < maps.size(); i++) {
+      auto& current_map = maps[i];
+      for (const auto& [key, value] : current_map) {
+        lock_guard guard(mutexes[i]);
+        auto it = current_map.find(key);
+        if (it != current_map.end()) {
+          ordinary_map[it->first] = it->second;
+        }
       }
     }
     return ordinary_map;
- }
+  }
+
 private:
-  vector<map<K, V>> maps;
-  vector<mutex> mutexes;
+  size_t GetBucket(const K& key) const {
+    return hash_function(key) % maps.size();
+  }
+  vector<MapType> maps;
+  mutable vector<mutex> mutexes;
+  Hash hash_function;
 };
 
 void RunConcurrentUpdates(
@@ -73,7 +93,7 @@ void RunConcurrentUpdates(
 
 void TestConcurrentUpdate() {
   const size_t thread_count = 3;
-  const size_t key_count = 50000;
+  const size_t key_count = 5000;
 
   ConcurrentMap<int, int> cm(thread_count);
   RunConcurrentUpdates(cm, thread_count, key_count);
