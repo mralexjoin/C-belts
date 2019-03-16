@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_set>
 
 using namespace std;
 
@@ -69,6 +70,7 @@ namespace Routes {
   };
 
   const std::unordered_map<std::string_view, ReadRequest::Type> ReadRequest::STR_TO_REQUEST_TYPE = {
+    {"Stop", Type::STOP},
     {"Bus", Type::BUS}
   };
 
@@ -131,6 +133,8 @@ namespace Routes {
 
   ReadRequestHolder ReadRequest::Create(ReadRequest::Type type) {
     switch(type) {
+    case Type::STOP:
+      return make_unique<ReadStopRoutesRequest>();
     case Type::BUS:
       return make_unique<ReadRouteStatsRequest>();
     default:
@@ -150,6 +154,32 @@ namespace Routes {
     out_stream << "Bus " << bus_number << ": ";
     if (route_stats) {
       out_stream << *route_stats;
+    }
+    else {
+      out_stream << "not found";
+    }
+  }
+
+  void ReadStopRoutesRequest::ParseFrom(string_view input) {
+    stop_name = string(TrimAll(input));
+  }
+
+  ResponseHolder ReadStopRoutesRequest::Execute(const Routes& routes) const {
+    return make_unique<StopResponse>(stop_name, routes.GetStopRoutes(this));
+  }
+
+  void StopResponse::Print(ostream& out_stream) const {
+    out_stream << "Stop " << stop_name << ": ";
+    if (routes) {
+      if (routes->empty()) {
+        out_stream << "no buses";
+      }
+      else {
+        out_stream << "buses";
+        for (const auto& route : *routes) {
+          out_stream << ' ' << route;
+        }
+      }
     }
     else {
       out_stream << "not found";

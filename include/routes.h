@@ -3,27 +3,28 @@
 #include "requests.h"
 
 #include <memory>
+#include <optional>
 #include <ostream>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
 namespace Routes {
-  using StringHolder = std::shared_ptr<std::string>;
-
   struct Position {
     double latitude;
     double longitude;
   };
 
   double DistanceBetweenPositions(const Position& lhs, const Position& rhs);
-
   struct Stop {
     Stop(StringHolder name) :
-      name(name) {}
+      name(name),
+      routes(std::make_shared<std::set<std::string_view>>()) {}
     StringHolder name;
     Position position;
+    StopRoutesHolder routes;
   };
 
   using StopHolder = std::shared_ptr<Stop>;
@@ -44,12 +45,9 @@ namespace Routes {
 
   class Route {
   public:
-    Route(StringHolder number,
-          bool is_circular,
-          std::vector<StopHolder>&& stops) :
+    Route(StringHolder number, bool is_circular) :
       number(number),
-      is_circular(is_circular),
-      stops(std::move(stops)) {}
+      is_circular(is_circular) {}
     RouteStatsHolder GetRouteStats() const;
     StringHolder number;
     bool is_circular;
@@ -58,17 +56,17 @@ namespace Routes {
     mutable RouteStatsHolder routes_stats;
   };
 
-  using RouteHolder = std::shared_ptr<const Route>;
-
   class AddStopRequest;
   class AddBusRequest;
   class ReadRouteStatsRequest;
+  class ReadStopRoutesRequest;
 
   class Routes {
   public:
     void AddStop(const AddStopRequest* request);
     void AddBus(const AddBusRequest* request);
     RouteStatsHolder GetRouteStats(const ReadRouteStatsRequest* request) const;
+    StopRoutesHolder GetStopRoutes(const ReadStopRoutesRequest* request) const;
   private:
     RouteStatsHolder ComputeRouteStats(const Route* route) const;
     StopHolder GetCreateStop(StringHolder name);

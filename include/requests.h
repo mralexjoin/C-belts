@@ -1,18 +1,25 @@
 #pragma once
 
-#include "routes.h"
-
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace Routes {
+  class Route;
+  using RouteHolder = std::shared_ptr<Route>;
+
+  struct Stop;
+  struct RouteStats;
+  using RouteStatsHolder = std::shared_ptr<const RouteStats>;
   using StringHolder = std::shared_ptr<std::string>;
+  using StopRoutesHolder = std::shared_ptr<std::set<std::string_view>>;
+
+  class Routes;
 
   double ConvertToDouble(std::string_view str);
 
@@ -98,11 +105,6 @@ namespace Routes {
     BUS
   };
 
-  class Routes;
-  struct Stop;
-  struct RouteStats;
-  using RouteStatsHolder = std::shared_ptr<const RouteStats>;
-
   class ModifyRequest;
   using ModifyRequestHolder = std::unique_ptr<ModifyRequest>;
 
@@ -152,7 +154,7 @@ namespace Routes {
   std::ostream& operator <<(std::ostream& out_stream, const Response& response);
   std::ostream& operator <<(std::ostream& out_stream, const RouteStats& stats);
 
-  class BusResponse : public Response {
+  class BusResponse final : public Response {
   public:
     BusResponse(std::string_view bus_number, const RouteStatsHolder route_stats) :
       bus_number(bus_number),
@@ -163,8 +165,20 @@ namespace Routes {
     RouteStatsHolder route_stats;
   };
 
+  class StopResponse final : public Response {
+  public:
+    StopResponse(std::string_view stop_name, StopRoutesHolder routes) :
+      stop_name(stop_name),
+      routes(routes) {}
+    void Print(std::ostream& out_stream) const override;
+  private:
+    std::string_view stop_name;
+    StopRoutesHolder routes;
+  };
+
   enum class ReadRequestType {
-    BUS
+    BUS,
+    STOP
   };
 
   class ReadRequest;
@@ -187,5 +201,15 @@ namespace Routes {
     ResponseHolder Execute(const Routes& routes) const override;
   private:
     std::string bus_number;
+  };
+
+  class ReadStopRoutesRequest final : public ReadRequest {
+  public:
+    friend class Routes;
+    ReadStopRoutesRequest() : ReadRequest(Type::STOP) {}
+    void ParseFrom(std::string_view input) override;
+    ResponseHolder Execute(const Routes& routes) const override;
+  private:
+    std::string stop_name;
   };
 }

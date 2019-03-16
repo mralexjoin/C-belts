@@ -1,6 +1,7 @@
 #include "routes.h"
 
 #include <cmath>
+#include <unordered_set>
 
 using namespace std;
 
@@ -20,21 +21,28 @@ namespace Routes {
   }
 
   void Routes::AddBus(const AddBusRequest* request) {
-    vector<StopHolder> route_stops;
-    route_stops.reserve(request->stops.size());
-    for (StringHolder stop_name : request->stops) {
-      route_stops.push_back(GetCreateStop(stop_name));
-    }
     RouteHolder route = make_shared<Route>(request->number,
-                                           request->is_circular,
-                                           move(route_stops));
+                                           request->is_circular);
+    route->stops.reserve(request->stops.size());
+    for (StringHolder stop_name : request->stops) {
+      StopHolder stop = GetCreateStop(stop_name);
+      stop->routes->insert(*route->number);
+      route->stops.push_back(stop);
+    }
+
     routes.insert({ *request->number, route });
   }
 
   RouteStatsHolder Routes::GetRouteStats(const ReadRouteStatsRequest* request) const {
-    if (auto it = routes.find(request->bus_number);
-        it != routes.end()) {
+    if (auto it = routes.find(request->bus_number); it != routes.end()) {
       return it->second->GetRouteStats();
+    }
+    return nullptr;
+  }
+
+  StopRoutesHolder Routes::GetStopRoutes(const ReadStopRoutesRequest* request) const {
+    if (auto it = stops.find(request->stop_name); it != stops.end()) {
+      return it->second->routes;
     }
     return nullptr;
   }
