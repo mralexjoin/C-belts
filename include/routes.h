@@ -3,7 +3,6 @@
 #include "requests.h"
 
 #include <memory>
-#include <optional>
 #include <ostream>
 #include <set>
 #include <string>
@@ -18,6 +17,9 @@ namespace Routes {
   };
 
   double DistanceBetweenPositions(const Position& lhs, const Position& rhs);
+
+  class Stop;
+  using StopHolder = std::shared_ptr<Stop>;
   struct Stop {
     Stop(StringHolder name) :
       name(name),
@@ -25,18 +27,22 @@ namespace Routes {
     StringHolder name;
     Position position;
     StopRoutesHolder routes;
+    std::unordered_map<StopHolder, int> distances_to_stops;
   };
 
-  using StopHolder = std::shared_ptr<Stop>;
-
   struct RouteStats {
-    RouteStats(size_t stops_on_route, size_t unique_stops, double route_length) :
+    RouteStats(size_t stops_on_route,
+               size_t unique_stops,
+               int route_length,
+               double curvature) :
       stops_on_route(stops_on_route),
       unique_stops(unique_stops),
-      route_length(route_length) {}
+      route_length(route_length),
+      curvature(curvature) {}
     const size_t stops_on_route;
     const size_t unique_stops;
-    const double route_length;
+    const int route_length;
+    const double curvature;
   };
 
   std::ostream& operator <<(std::ostream& out_stream, const RouteStats& stats);
@@ -53,6 +59,10 @@ namespace Routes {
     bool is_circular;
     std::vector<StopHolder> stops;
   private:
+    double GetDirectDistance() const;
+    int GetDistanceByStops() const;
+    size_t GetUniqueStopsCount() const;
+    size_t GetStopsCount() const;
     mutable RouteStatsHolder routes_stats;
   };
 

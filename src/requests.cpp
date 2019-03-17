@@ -9,15 +9,26 @@
 using namespace std;
 
 namespace Routes {
+  void CheckInputIsEmpty(string_view input, size_t pos) {
+    if (pos != input.length()) {
+      stringstream error;
+      error << "string " << input << " contains "
+            << (input.length() - pos) << " trailing chars";
+      throw invalid_argument(error.str());
+    }
+  }
+
   double ConvertToDouble(string_view str) {
     size_t pos;
     const double result = stod(string(str), &pos);
-    if (pos != str.length()) {
-      stringstream error;
-      error << "string " << str << " contains "
-            << (str.length() - pos) << " trailing chars";
-      throw invalid_argument(error.str());
-    }
+    CheckInputIsEmpty(str, pos);
+    return result;
+  }
+
+  int ConvertToInt(string_view str) {
+    size_t pos;
+    const int result = stoi(string(str), &pos);
+    CheckInputIsEmpty(str, pos);
     return result;
   }
 
@@ -60,7 +71,7 @@ namespace Routes {
 
   string_view ReadToken(string_view& s, string_view delimiter) {
     const auto [lhs, rhs] = SplitTwo(TrimLeft(s), delimiter);
-    s = rhs;
+    s = TrimLeft(rhs);
     return TrimRight(lhs);
   }
 
@@ -88,12 +99,13 @@ namespace Routes {
   void AddStopRequest::ParseFrom(string_view input) {
     name = ConverToStringHolder(ReadToken(input, ":"));
     latitude = ConvertToDouble(ReadToken(input, ","));
-    longitude = ConvertToDouble(ReadToken(input));
-    input = TrimAll(input);
-    if (input != "") {
-      stringstream error;
-      error << "request is not fully parsed, trailing chars = " << input;
-      throw invalid_argument(error.str());
+    longitude = ConvertToDouble(ReadToken(input, ","));
+    while (input.length() > 0) {
+      int distance = ConvertToInt(ReadToken(input, "m to"));
+      distances_to_stops.push_back({
+        make_shared<string>(ReadToken(input, ",")),
+        distance
+      });
     }
   }
 

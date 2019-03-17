@@ -2,7 +2,6 @@
 
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -22,6 +21,7 @@ namespace Routes {
   class Routes;
 
   double ConvertToDouble(std::string_view str);
+  int ConvertToInt(std::string_view str);
 
   StringHolder ConverToStringHolder(std::string_view str);
 
@@ -127,6 +127,7 @@ namespace Routes {
     StringHolder name;
     double latitude;
     double longitude;
+    std::vector<std::pair<StringHolder, int>> distances_to_stops;
   };
 
   class AddBusRequest final : public ModifyRequest {
@@ -188,7 +189,7 @@ namespace Routes {
   public:
     using Type = ReadRequestType;
     using Request::Request;
-    static const std::unordered_map<std::string_view, Type> STR_TO_REQUEST_TYPE; 
+    static const std::unordered_map<std::string_view, Type> STR_TO_REQUEST_TYPE;
     static ReadRequestHolder Create(Type type);
     virtual ResponseHolder Execute(const Routes& routes) const = 0;
   };

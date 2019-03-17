@@ -11,13 +11,18 @@ namespace Routes {
       return it->second;
     }
 
-    StopHolder stop = make_shared<Stop>(name);
+    auto stop = make_shared<Stop>(name);
     return stops.insert({ *stop->name, stop }).first->second;
   }
 
   void Routes::AddStop(const AddStopRequest* request) {
-    GetCreateStop(request->name)->position 
-      = Position({ request->latitude, request->longitude });
+    auto stop = GetCreateStop(request->name);
+    stop->position = Position({ request->latitude, request->longitude });
+    for (const auto& [another_stop_name, distance] : request->distances_to_stops) {
+      auto another_stop = GetCreateStop(another_stop_name);
+      another_stop->distances_to_stops.insert({ stop, distance });
+      stop->distances_to_stops[another_stop] = distance;
+    }
   }
 
   void Routes::AddBus(const AddBusRequest* request) {
@@ -47,30 +52,59 @@ namespace Routes {
     return nullptr;
   }
 
+  int Route::GetDistanceByStops() const {
+    int distance = 0;
+    for (auto from_stop = stops.begin(), to_stop = next(from_stop);
+        to_stop != stops.end();
+        from_stop = next(from_stop), to_stop = next(to_stop)) {
+      distance += (*from_stop)->distances_to_stops.at(*to_stop);
+    }
+    if (is_circular && !stops.empty()) {
+      distance += stops.back()->distances_to_stops.at(stops.front());
+    }
+    else {
+      for (auto from_stop = stops.rbegin(), to_stop = next(from_stop);
+           to_stop != stops.rend();
+           from_stop = next(from_stop), to_stop = next(to_stop)) {
+        distance += (*from_stop)->distances_to_stops.at(*to_stop);
+      }
+    }
+    return distance;
+  }
+
+  double Route::GetDirectDistance() const {
+    double distance = 0;
+    for (auto from_stop = stops.begin(), to_stop = next(from_stop);
+        to_stop != stops.end();
+        from_stop = next(from_stop), to_stop = next(to_stop)) {
+      distance += DistanceBetweenPositions((*from_stop)->position, (*to_stop)->position);
+    }
+    if (is_circular && !stops.empty()) {
+      return distance + DistanceBetweenPositions(stops.back()->position, stops.front()->position);
+    }
+    return 2 * distance;
+  }
+
+  size_t Route::GetUniqueStopsCount() const {
+    unordered_set<StopHolder> unique_stops;
+    for (const auto stop : stops) {
+      unique_stops.insert(stop);
+    }
+    return unique_stops.size();
+  }
+
+  size_t Route::GetStopsCount() const {
+    return stops.size() + (is_circular ? 1 : (stops.size() - 1));
+  }
+
   RouteStatsHolder Route::GetRouteStats() const {
     if (!routes_stats) {
-      unordered_set<StopHolder> unique_stops;
-      for (const auto stop : stops) {
-        unique_stops.insert(stop);
-      }
-
-      double distance = 0;
-      for (auto it1 = stops.begin(), it2 = next(it1);
-          it2 != stops.end();
-          it1 = next(it1), it2 = next(it2)) {
-        distance += DistanceBetweenPositions((*it1)->position, (*it2)->position);
-      }
-      if (is_circular && !stops.empty()) {
-        distance += DistanceBetweenPositions(stops.front()->position, stops.back()->position);
-      }
-      else {
-        distance *= 2;
-      }
-
+      int distance = GetDistanceByStops();
       routes_stats = make_shared<RouteStats>(
-        stops.size() + (is_circular ? 1 : (stops.size() - 1)),
-        unique_stops.size(),
-        distance
+        GetStopsCount(),
+        GetUniqueStopsCount(),
+        distance,
+        distance / GetDirectDistance()
       );
     }
     return routes_stats;
@@ -96,6 +130,7 @@ namespace Routes {
   ostream& operator <<(ostream& out_stream, const RouteStats& stats) {
     return out_stream << stats.stops_on_route << " stops on route, "
                       << stats.unique_stops << " unique stops, "
-                      << stats.route_length << " route length";
+                      << stats.route_length << " route length, "
+                      << stats.curvature << " curvature";
   }
 };
