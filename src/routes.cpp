@@ -1,12 +1,13 @@
 #include "routes.h"
 
+#include <algorithm>
 #include <cmath>
 #include <unordered_set>
 
 using namespace std;
 
 namespace Routes {
-  StopHolder Routes::GetCreateStop(StringHolder name) {
+   StopHolder Routes::GetCreateStop(StringHolder name) {
     if (auto it = stops.find(*name); it != stops.end()) {
       return it->second;
     }
@@ -18,7 +19,7 @@ namespace Routes {
   void Routes::AddStop(const AddStopRequest* request) {
     auto stop = GetCreateStop(request->name);
     stop->position = Position({ request->latitude, request->longitude });
-    for (const auto& [another_stop_name, distance] : request->distances_to_stops) {
+    for (const auto& [another_stop_name, distance] : request->road_distances) {
       auto another_stop = GetCreateStop(another_stop_name);
       another_stop->distances_to_stops.insert({ stop, distance });
       stop->distances_to_stops[another_stop] = distance;
@@ -26,40 +27,40 @@ namespace Routes {
   }
 
   void Routes::AddBus(const AddBusRequest* request) {
-    RouteHolder route = make_shared<Route>(request->number,
-                                           request->is_circular);
-    route->stops.reserve(request->stops.size());
-    for (StringHolder stop_name : request->stops) {
-      StopHolder stop = GetCreateStop(stop_name);
-      stop->routes->insert(*route->number);
-      route->stops.push_back(stop);
+    BusHolder bus = make_shared<Bus>(request->name,
+                                     request->is_roundtrip);
+    bus->stops.reserve(request->stops.size());
+    for (const auto& name : request->stops) {
+      StopHolder stop = GetCreateStop(name);
+      stop->buses->insert(*bus->name);
+      bus->stops.push_back(stop);
     }
 
-    routes.insert({ *request->number, route });
+    buses.insert({ *bus->name, bus });
   }
 
-  RouteStatsHolder Routes::GetRouteStats(const ReadRouteStatsRequest* request) const {
-    if (auto it = routes.find(request->bus_number); it != routes.end()) {
+  BusStatsHolder Routes::GetRouteStats(const ReadRouteStatsRequest* request) const {
+    if (auto it = buses.find(request->name); it != buses.end()) {
       return it->second->GetRouteStats();
     }
     return nullptr;
   }
 
-  StopRoutesHolder Routes::GetStopRoutes(const ReadStopRoutesRequest* request) const {
-    if (auto it = stops.find(request->stop_name); it != stops.end()) {
-      return it->second->routes;
+  StopBusesHolder Routes::GetStopBuses(const ReadStopBusesRequest* request) const {
+    if (auto it = stops.find(request->name); it != stops.end()) {
+      return it->second->buses;
     }
     return nullptr;
   }
 
-  int Route::GetDistanceByStops() const {
+  int Bus::GetDistanceByStops() const {
     int distance = 0;
     for (auto from_stop = stops.begin(), to_stop = next(from_stop);
         to_stop != stops.end();
         from_stop = next(from_stop), to_stop = next(to_stop)) {
       distance += (*from_stop)->distances_to_stops.at(*to_stop);
     }
-    if (is_circular && !stops.empty()) {
+    if (is_roundtrip && !stops.empty()) {
       distance += stops.back()->distances_to_stops.at(stops.front());
     }
     else {
@@ -72,35 +73,35 @@ namespace Routes {
     return distance;
   }
 
-  double Route::GetDirectDistance() const {
+  double Bus::GetDirectDistance() const {
     double distance = 0;
     for (auto from_stop = stops.begin(), to_stop = next(from_stop);
         to_stop != stops.end();
         from_stop = next(from_stop), to_stop = next(to_stop)) {
       distance += DistanceBetweenPositions((*from_stop)->position, (*to_stop)->position);
     }
-    if (is_circular && !stops.empty()) {
+    if (is_roundtrip && !stops.empty()) {
       return distance + DistanceBetweenPositions(stops.back()->position, stops.front()->position);
     }
     return 2 * distance;
   }
 
-  size_t Route::GetUniqueStopsCount() const {
-    unordered_set<StopHolder> unique_stops;
+  size_t Bus::GetUniqueStopsCount() const {
+    unordered_set<StopHolder> unique_stop_count;
     for (const auto stop : stops) {
-      unique_stops.insert(stop);
+      unique_stop_count.insert(stop);
     }
-    return unique_stops.size();
+    return unique_stop_count.size();
   }
 
-  size_t Route::GetStopsCount() const {
-    return stops.size() + (is_circular ? 1 : (stops.size() - 1));
+  size_t Bus::GetStopsCount() const {
+    return stops.size() + (is_roundtrip ? 1 : (stops.size() - 1));
   }
 
-  RouteStatsHolder Route::GetRouteStats() const {
+  BusStatsHolder Bus::GetRouteStats() const {
     if (!routes_stats) {
       int distance = GetDistanceByStops();
-      routes_stats = make_shared<RouteStats>(
+      routes_stats = make_shared<BusStats>(
         GetStopsCount(),
         GetUniqueStopsCount(),
         distance,
@@ -127,9 +128,9 @@ namespace Routes {
     return 2 * EARTH_RADIUS * atan2(sqrt(a), sqrt(1 - a));
   }
 
-  ostream& operator <<(ostream& out_stream, const RouteStats& stats) {
-    return out_stream << stats.stops_on_route << " stops on route, "
-                      << stats.unique_stops << " unique stops, "
+  ostream& operator <<(ostream& out_stream, const BusStats& stats) {
+    return out_stream << stats.stop_count << " stops on route, "
+                      << stats.unique_stop_count << " unique stops, "
                       << stats.route_length << " route length, "
                       << stats.curvature << " curvature";
   }

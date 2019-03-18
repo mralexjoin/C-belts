@@ -1,5 +1,6 @@
 #pragma once
 
+#include "json.h"
 #include "requests.h"
 
 #include <memory>
@@ -18,69 +19,70 @@ namespace Routes {
 
   double DistanceBetweenPositions(const Position& lhs, const Position& rhs);
 
+  class Bus;
+  using BusHolder = std::shared_ptr<Bus>;
+
   class Stop;
   using StopHolder = std::shared_ptr<Stop>;
   struct Stop {
     Stop(StringHolder name) :
       name(name),
-      routes(std::make_shared<std::set<std::string_view>>()) {}
+      buses(std::make_shared<StopBuses>()) {}
     StringHolder name;
     Position position;
-    StopRoutesHolder routes;
     std::unordered_map<StopHolder, int> distances_to_stops;
+    StopBusesHolder buses;
   };
 
-  struct RouteStats {
-    RouteStats(size_t stops_on_route,
-               size_t unique_stops,
+  struct BusStats {
+    BusStats(size_t stop_count,
+               size_t unique_stop_count,
                int route_length,
                double curvature) :
-      stops_on_route(stops_on_route),
-      unique_stops(unique_stops),
+      stop_count(stop_count),
+      unique_stop_count(unique_stop_count),
       route_length(route_length),
       curvature(curvature) {}
-    const size_t stops_on_route;
-    const size_t unique_stops;
+    Json::Node ToJson() const;
+    const size_t stop_count;
+    const size_t unique_stop_count;
     const int route_length;
     const double curvature;
   };
 
-  std::ostream& operator <<(std::ostream& out_stream, const RouteStats& stats);
+  using BusStatsHolder = std::shared_ptr<const BusStats>;
 
-  using RouteStatsHolder = std::shared_ptr<const RouteStats>;
-
-  class Route {
+  class Bus {
   public:
-    Route(StringHolder number, bool is_circular) :
-      number(number),
-      is_circular(is_circular) {}
-    RouteStatsHolder GetRouteStats() const;
-    StringHolder number;
-    bool is_circular;
+    Bus(StringHolder name, bool is_roundtrip) :
+      name(name),
+      is_roundtrip(is_roundtrip) {}
+    BusStatsHolder GetRouteStats() const;
+    StringHolder name;
+    bool is_roundtrip;
     std::vector<StopHolder> stops;
   private:
     double GetDirectDistance() const;
     int GetDistanceByStops() const;
     size_t GetUniqueStopsCount() const;
     size_t GetStopsCount() const;
-    mutable RouteStatsHolder routes_stats;
+    mutable BusStatsHolder routes_stats;
   };
 
   class AddStopRequest;
   class AddBusRequest;
   class ReadRouteStatsRequest;
-  class ReadStopRoutesRequest;
+  class ReadStopBusesRequest;
 
   class Routes {
   public:
     void AddStop(const AddStopRequest* request);
     void AddBus(const AddBusRequest* request);
-    RouteStatsHolder GetRouteStats(const ReadRouteStatsRequest* request) const;
-    StopRoutesHolder GetStopRoutes(const ReadStopRoutesRequest* request) const;
+    BusStatsHolder GetRouteStats(const ReadRouteStatsRequest* request) const;
+    StopBusesHolder GetStopBuses(const ReadStopBusesRequest* request) const;
   private:
-    RouteStatsHolder ComputeRouteStats(const Route* route) const;
     StopHolder GetCreateStop(StringHolder name);
     std::unordered_map<std::string_view, StopHolder> stops;
-    std::unordered_map<std::string_view, RouteHolder> routes;
+    std::unordered_map<std::string_view, BusHolder> buses;
   };
 }

@@ -1,173 +1,103 @@
 #include "test_runner.h"
 #include "routes.h"
+#include "json.h"
 
 #include <iostream>
 #include <sstream>
 
 using namespace std;
+using namespace Json;
 
-Routes::Routes CreateRoutes(istream& in_stream = cin) {
-  Routes::Routes routes;
-  const auto requests = Routes::ReadRequests<Routes::ModifyRequest>(in_stream);
-  for (const auto& request : requests) {
-    request->Execute(routes);
+Routes::Routes CreateRoutes(Document& document) {
+  Routes::Routes buses;
+  auto& requests_by_type = document.GetRoot().AsMap();
+  if (const auto& requests = requests_by_type.find("base_requests");
+      requests != requests_by_type.end()) {
+    for (const auto& request : Routes::ReadRequests<Routes::ModifyRequest>(requests->second)) {
+      request->Execute(buses);
+    }
   }
-  return routes;
+  return buses;
 }
 
-void ReadRoutes(const Routes::Routes& routes,
-                istream& in_stream = cin,
-                ostream& out_stream = cout) {
-  for (const auto& request : Routes::ReadRequests<Routes::ReadRequest>(in_stream)) {
-    out_stream << *request->Execute(routes) << '\n';
+Document ReadRoutes(const Routes::Routes& buses, Document& document) {
+  auto& requests_by_type = document.GetRoot().AsMap();
+  vector<Node> requests_node;
+  if (const auto& requests = requests_by_type.find("stat_requests");
+      requests != requests_by_type.end()) {
+    for (const auto& request : Routes::ReadRequests<Routes::ReadRequest>(requests->second)) {
+      requests_node.push_back(request->Execute(buses)->ToJson());
+    }
   }
+  return Document{move(requests_node)};
 }
 
-void TestTrim() {
-  using namespace Routes;
-  ASSERT_EQUAL(TrimLeft("  Stop"), "Stop");
-  ASSERT_EQUAL(TrimLeft("Stop"), "Stop");
-  ASSERT_EQUAL(TrimLeft("    "), "");
-
-  ASSERT_EQUAL(TrimRight("Stop   "), "Stop");
-  ASSERT_EQUAL(TrimRight("Stop"), "Stop");
-  ASSERT_EQUAL(TrimLeft("    "), "");
+void ProcessQueries(istream& input, ostream& output) {
+  ostringstream buffer;
+  for (string str; getline(input, str);) {
+    cerr << str;
+    buffer << str;
+  }
+  istringstream new_input(buffer.str());
+  Document in_json = Load(new_input);
+  Document out_json = ReadRoutes(CreateRoutes(in_json), in_json);
+  Save(out_json, output);
 }
 
-void TestInput() {
-  istringstream input("2\n"
-  "    Stop    Tolstopaltsevo    :   55.611087,   37.20829   \n"
-  "Stop Tolstopaltsevo: 55.611087, 37.20829, 3900m to Marushkino");
-  const auto requests = Routes::ReadRequests<Routes::ModifyRequest>(input);
-  ASSERT_EQUAL(requests.size(), 2u);
-}
-
-void TestFromTask1() {
-  istringstream input(
-R"(10
-Stop Tolstopaltsevo: 55.611087, 37.20829
-Stop Marushkino: 55.595884, 37.209755
-Bus 256: Biryulyovo Zapadnoye > Biryusinka > Universam > Biryulyovo Tovarnaya > Biryulyovo Passazhirskaya > Biryulyovo Zapadnoye
-Bus 750: Tolstopaltsevo - Marushkino - Rasskazovka
-Stop Rasskazovka: 55.632761, 37.333324
-Stop Biryulyovo Zapadnoye: 55.574371, 37.6517
-Stop Biryusinka: 55.581065, 37.64839
-Stop Universam: 55.587655, 37.645687
-Stop Biryulyovo Tovarnaya: 55.592028, 37.653656
-Stop Biryulyovo Passazhirskaya: 55.580999, 37.659164
-3
-Bus 256
-Bus 750
-Bus 751)"
-  );
+void TestFromTask() {
+  istringstream input(R"({"base_requests": [{"type": "Stop", "name": "Tolstopaltsevo", "latitude": 55.611087, "longitude": 37.20829, "road_distances": {"Marushkino": 3900}}, {"type": "Stop", "name": "Marushkino", "latitude": 55.595884, "longitude": 37.209755, "road_distances": {"Rasskazovka": 9900}}, {"type": "Bus", "name": "256", "stops": ["Biryulyovo Zapadnoye", "Biryusinka", "Universam", "Biryulyovo Tovarnaya", "Biryulyovo Passazhirskaya", "Biryulyovo Zapadnoye"], "is_roundtrip": true}, {"type": "Bus", "name": "750", "stops": ["Tolstopaltsevo", "Marushkino", "Rasskazovka"], "is_roundtrip": false}, {"type": "Stop", "name": "Rasskazovka", "latitude": 55.632761, "longitude": 37.333324, "road_distances": {}}, {"type": "Stop", "name": "Biryulyovo Zapadnoye", "latitude": 55.574371, "longitude": 37.6517, "road_distances": {"Biryusinka": 1800, "Universam": 2400, "Rossoshanskaya ulitsa": 7500}}, {"type": "Stop", "name": "Biryusinka", "latitude": 55.581065, "longitude": 37.64839, "road_distances": {"Universam": 750}}, {"type": "Stop", "name": "Universam", "latitude": 55.587655, "longitude": 37.645687, "road_distances": {"Biryulyovo Tovarnaya": 900, "Rossoshanskaya ulitsa": 5600}}, {"type": "Stop", "name": "Biryulyovo Tovarnaya", "latitude": 55.592028, "longitude": 37.653656, "road_distances": {"Biryulyovo Passazhirskaya": 1300}}, {"type": "Stop", "name": "Biryulyovo Passazhirskaya", "latitude": 55.580999, "longitude": 37.659164, "road_distances": {"Biryulyovo Zapadnoye": 1200}}, {"type": "Bus", "name": "828", "stops": ["Biryulyovo Zapadnoye", "Universam", "Rossoshanskaya ulitsa", "Biryulyovo Zapadnoye"], "is_roundtrip": true}, {"type": "Stop", "name": "Rossoshanskaya ulitsa", "latitude": 55.595579, "longitude": 37.605757, "road_distances": {}}, {"type": "Stop", "name": "Prazhskaya", "latitude": 55.611678, "longitude": 37.603831, "road_distances": {}}], "stat_requests": [{"id": 92297645, "type": "Bus", "name": "256"}, {"id": 1403850987, "type": "Bus", "name": "750"}, {"id": 197444743, "type": "Bus", "name": "751"}, {"id": 605625806, "type": "Stop", "name": "Samara"}, {"id": 401974628, "type": "Stop", "name": "Prazhskaya"}, {"id": 435078922, "type": "Stop", "name": "Biryulyovo Zapadnoye"}]})");
   ostringstream output;
-  ReadRoutes(CreateRoutes(input), input, output);
-ASSERT_EQUAL(output.str(),
-R"(Bus 256: 6 stops on route, 5 unique stops, 4371.02 route length
-Bus 750: 5 stops on route, 3 unique stops, 20939.5 route length
-Bus 751: not found
-)"
-);
+  ProcessQueries(input, output);
+  string expected = R"([
+  {
+    "curvature": 1.36124,
+    "request_id": 1965312327,
+    "route_length": 5950,
+    "stop_count": 6,
+    "unique_stop_count": 5
+  },
+  {
+    "curvature": 1.31808,
+    "request_id": 519139350,
+    "route_length": 27600,
+    "stop_count": 5,
+    "unique_stop_count": 3
+  },
+  {
+    "error_message": "not found",
+    "request_id": 194217464
+  },
+  {
+    "error_message": "not found",
+    "request_id": 746888088
+  },
+  {
+    "buses": [],
+    "request_id": 65100610
+  },
+  {
+    "buses": [
+      "256",
+      "828"
+    ],
+    "request_id": 1042838872
+  }
+])";
+  ASSERT_EQUAL(output.str(), expected);
 }
 
-void TestFromTask2() {
-  istringstream input(
-R"(14
-Stop Tolstopaltsevo: 55.611087, 37.20829
-Stop Marushkino: 55.595884, 37.209755
-Bus 256: Biryulyovo Zapadnoye > Biryusinka > Universam > Biryulyovo Tovarnaya > Biryulyovo Passazhirskaya > Biryulyovo Zapadnoye
-Bus 750: Tolstopaltsevo - Marushkino - Rasskazovka
-Stop Rasskazovka: 55.632761, 37.333324
-Stop Biryulyovo Zapadnoye: 55.574371, 37.6517
-Stop Biryusinka: 55.581065, 37.64839
-Stop Universam: 55.587655, 37.645687
-Stop Biryulyovo Tovarnaya: 55.592028, 37.653656
-Stop Biryulyovo Passazhirskaya: 55.580999, 37.659164
-Bus 828: Biryulyovo Zapadnoye > Universam > Rossoshanskaya ulitsa > Biryulyovo Zapadnoye
-Stop Rossoshanskaya ulitsa: 55.595579, 37.605757
-Stop Prazhskaya: 55.611678, 37.603831
-Bus 100: Biryusinka - Universam
-7
-Bus 256
-Bus 750
-Bus 751
-Stop Samara
-Stop Prazhskaya
-Stop Biryulyovo Zapadnoye
-Stop Universam)"
-  );
-  ostringstream output;
-  ReadRoutes(CreateRoutes(input), input, output);
-ASSERT_EQUAL(output.str(),
-R"(Bus 256: 6 stops on route, 5 unique stops, 4371.02 route length
-Bus 750: 5 stops on route, 3 unique stops, 20939.5 route length
-Bus 751: not found
-Stop Samara: not found
-Stop Prazhskaya: no buses
-Stop Biryulyovo Zapadnoye: buses 256 828
-Stop Universam: buses 100 256 828
-)"
-);
-}
-
-void TestFromTask3() {
-  istringstream input(
-R"(13
-Stop Tolstopaltsevo: 55.611087, 37.20829, 3900m to Marushkino
-Stop Marushkino: 55.595884, 37.209755, 9900m to Rasskazovka
-Bus 256: Biryulyovo Zapadnoye > Biryusinka > Universam > Biryulyovo Tovarnaya > Biryulyovo Passazhirskaya > Biryulyovo Zapadnoye
-Bus 750: Tolstopaltsevo - Marushkino - Rasskazovka
-Stop Rasskazovka: 55.632761, 37.333324
-Stop Biryulyovo Zapadnoye: 55.574371, 37.6517, 7500m to Rossoshanskaya ulitsa, 1800m to Biryusinka, 2400m to Universam
-Stop Biryusinka: 55.581065, 37.64839, 750m to Universam
-Stop Universam: 55.587655, 37.645687, 5600m to Rossoshanskaya ulitsa, 900m to Biryulyovo Tovarnaya
-Stop Biryulyovo Tovarnaya: 55.592028, 37.653656, 1300m to Biryulyovo Passazhirskaya
-Stop Biryulyovo Passazhirskaya: 55.580999, 37.659164, 1200m to Biryulyovo Zapadnoye
-Bus 828: Biryulyovo Zapadnoye > Universam > Rossoshanskaya ulitsa > Biryulyovo Zapadnoye
-Stop Rossoshanskaya ulitsa: 55.595579, 37.605757
-Stop Prazhskaya: 55.611678, 37.603831
-6
-Bus 256
-Bus 750
-Bus 751
-Stop Samara
-Stop Prazhskaya
-Stop Biryulyovo Zapadnoye)"
-  );
-  ostringstream output;
-  output.precision(7);
-  ReadRoutes(CreateRoutes(input), input, output);
-ASSERT_EQUAL(output.str(),
-R"(Bus 256: 6 stops on route, 5 unique stops, 5950 route length, 1.361239 curvature
-Bus 750: 5 stops on route, 3 unique stops, 27600 route length, 1.318084 curvature
-Bus 751: not found
-Stop Samara: not found
-Stop Prazhskaya: no buses
-Stop Biryulyovo Zapadnoye: buses 256 828
-)"
-  );
-}
-
-void TestComputeDistance() {
-  using namespace Routes;
-  Position p1 = {56, 38}, p2 = {55, 37};
-  ASSERT_EQUAL(DistanceBetweenPositions(p1, p2), 127789.739050);
-  ASSERT_EQUAL(DistanceBetweenPositions(p2, p1), 127789.739050);
+void TestSecond() {
+  istringstream input(R"({"base_requests": [{"type": "Stop", "name": "A", "latitude": 0.5, "longitude": -1, "road_distances": {"B": 100000}}, {"type": "Stop", "name": "B", "latitude": 0, "longitude": -1.1, "road_distances": {}}, {"type": "Bus", "name": "256", "stops": ["B", "A"], "is_roundtrip": false}], "stat_requests": [{"id": 2143866354, "type": "Bus", "name": "256"}, {"id": 1759785269, "type": "Stop", "name": "A"}, {"id": 252557929, "type": "Stop", "name": "B"}, {"id": 1839286974, "type": "Stop", "name": "C"}]})");
+  ProcessQueries(input, cout);
 }
 
 void RunTests() {
   TestRunner tr;
-  // RUN_TEST(tr, TestTrim);
-  // RUN_TEST(tr, TestInput);
-  // RUN_TEST(tr, TestFromTask1);
-  // RUN_TEST(tr, TestFromTask2);
-  RUN_TEST(tr, TestFromTask3);
-  //RUN_TEST(tr, TestComputeDistance);
+  RUN_TEST(tr, TestSecond);
 }
 
 int main() {
-  cout.precision(6);
-  // RunTests();
-  ReadRoutes(CreateRoutes());
+  RunTests();
+  ProcessQueries(cin, cout);
   return 0;
 }

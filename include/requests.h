@@ -1,7 +1,10 @@
 #pragma once
 
+#include "json.h"
+
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -9,44 +12,10 @@
 #include <vector>
 
 namespace Routes {
-  class Route;
-  using RouteHolder = std::shared_ptr<Route>;
+  using StringHolder = std::shared_ptr<const std::string>;
 
-  struct Stop;
-  struct RouteStats;
-  using RouteStatsHolder = std::shared_ptr<const RouteStats>;
-  using StringHolder = std::shared_ptr<std::string>;
-  using StopRoutesHolder = std::shared_ptr<std::set<std::string_view>>;
-
-  class Routes;
-
-  double ConvertToDouble(std::string_view str);
-  int ConvertToInt(std::string_view str);
-
-  StringHolder ConverToStringHolder(std::string_view str);
-
-  std::pair<std::string_view, std::optional<std::string_view>>
-  SplitTwoStrict(std::string_view s, std::string_view delimiter = " ");
-
-  std::pair<std::string_view, std::string_view>
-  SplitTwo(std::string_view s, std::string_view delimiter = " ");
-
-  std::string_view TrimLeft(std::string_view s);
-
-  std::string_view TrimRight(std::string_view s);
-
-  std::string_view TrimAll(std::string_view s);
-
-  std::string_view ReadToken(std::string_view& s, std::string_view delimiter = " ");
-
-  template <typename Number>
-  Number ReadNumberOnLine(std::istream& in_stream) {
-    Number number;
-    in_stream >> number;
-    std::string dummy;
-    getline(in_stream, dummy);
-    return number;
-  }
+  using StopBuses = std::set<std::string_view>;
+  using StopBusesHolder = std::shared_ptr<StopBuses>;
 
   template <typename Request>
   std::optional<typename Request::Type> ConvertRequestTypeFromString(std::string_view type_str) {
@@ -58,35 +27,35 @@ namespace Routes {
   }
 
   template <typename Request>
-  std::unique_ptr<Request> ParseRequest(std::string_view request_str) {
+  std::unique_ptr<Request> ParseRequest(const Json::Node& node) {
     using namespace std;
+
     const auto request_type
-      = ConvertRequestTypeFromString<Request>(ReadToken(request_str));
+      = ConvertRequestTypeFromString<Request>(node.AsMap().at("type").AsString());
     if (!request_type) {
       return nullptr;
     }
     unique_ptr<Request> request = Request::Create(*request_type);
     if (request) {
-      request->ParseFrom(request_str);
+      request->FromJson(node);
     }
     return request;
   }
 
   template <typename Request>
-  std::vector<std::unique_ptr<Request>> ReadRequests(std::istream& in_stream) {
+  std::vector<std::unique_ptr<Request>> ReadRequests(const Json::Node& node) {
     using namespace std;
-    const size_t request_count = ReadNumberOnLine<size_t>(in_stream);
 
+    const auto& requests_json = node.AsArray();
     vector<unique_ptr<Request>> requests;
-    requests.reserve(request_count);
+    requests.reserve(requests_json.size());
 
-    for (size_t i = 0; i < request_count; ++i) {
-      string request_str;
-      getline(in_stream, request_str);
-      if (auto request = ParseRequest<Request>(request_str)) {
+    for (const auto& request_json : requests_json) {
+      if (auto request = ParseRequest<Request>(request_json)) {
         requests.push_back(move(request));
       }
     }
+
     return requests;
   }
 
@@ -94,7 +63,7 @@ namespace Routes {
   class Request {
   public:
     Request(Type type) : type(type) {}
-    virtual void ParseFrom(std::string_view input) = 0;
+    virtual void FromJson(const Json::Node& node) = 0;
     virtual ~Request() = default;
   private:
     const Type type;
@@ -105,6 +74,8 @@ namespace Routes {
     BUS
   };
 
+  class Routes;
+
   class ModifyRequest;
   using ModifyRequestHolder = std::unique_ptr<ModifyRequest>;
 
@@ -114,67 +85,68 @@ namespace Routes {
     using Request::Request;
     static const std::unordered_map<std::string_view, Type> STR_TO_REQUEST_TYPE;
     static ModifyRequestHolder Create(Type type);
-    virtual void Execute(Routes& routes) const = 0;
+    virtual void Execute(Routes& buses) const = 0;
   };
 
   class AddStopRequest final : public ModifyRequest {
   public:
     friend class Routes;
     AddStopRequest() : ModifyRequest(Type::STOP) {}
-    void ParseFrom(std::string_view input) override;
-    void Execute(Routes& routes) const override;
+    void FromJson(const Json::Node& node) override;
+    void Execute(Routes& buses) const override;
   private:
     StringHolder name;
     double latitude;
     double longitude;
-    std::vector<std::pair<StringHolder, int>> distances_to_stops;
+    std::vector<std::pair<StringHolder, int>> road_distances;
   };
 
   class AddBusRequest final : public ModifyRequest {
   public:
     friend class Routes;
     AddBusRequest() : ModifyRequest(Type::BUS) {}
-    void ParseFrom(std::string_view input) override;
-    void Execute(Routes& routes) const override;
+    void FromJson(const Json::Node& node) override;
+    void Execute(Routes& buses) const override;
   private:
-    static std::string_view GetStopsDelimiter(std::string_view input);
-    StringHolder number;
-    bool is_circular;
+    StringHolder name;
+    bool is_roundtrip;
     std::vector<StringHolder> stops;
   };
 
-  class Response;
-  using ResponseHolder = std::unique_ptr<Response>;
-
   class Response {
   public:
-    virtual void Print(std::ostream& out_stream) const = 0;
+    Response(int id) : id(id) {}
+    Json::Node ToJson() const;
     virtual ~Response() = default;
+  private:
+    virtual bool Empty() const = 0;
+    virtual void FillJson(Json::Node& node) const = 0;
+    const int id;
   };
 
-  std::ostream& operator <<(std::ostream& out_stream, const Response& response);
-  std::ostream& operator <<(std::ostream& out_stream, const RouteStats& stats);
+  struct BusStats;
+  using BusStatsHolder = std::shared_ptr<const BusStats>;
 
   class BusResponse final : public Response {
   public:
-    BusResponse(std::string_view bus_number, const RouteStatsHolder route_stats) :
-      bus_number(bus_number),
+    BusResponse(int id, const BusStatsHolder route_stats) :
+      Response(id),
       route_stats(route_stats) {}
-    void Print(std::ostream& out_stream) const override;
   private:
-    std::string_view bus_number;
-    RouteStatsHolder route_stats;
+    bool Empty() const override;
+    void FillJson(Json::Node& node) const override;
+    const BusStatsHolder route_stats;
   };
 
   class StopResponse final : public Response {
   public:
-    StopResponse(std::string_view stop_name, StopRoutesHolder routes) :
-      stop_name(stop_name),
-      routes(routes) {}
-    void Print(std::ostream& out_stream) const override;
+    StopResponse(int id, StopBusesHolder buses) :
+      Response(id),
+      buses(buses) {}
   private:
-    std::string_view stop_name;
-    StopRoutesHolder routes;
+    bool Empty() const override;
+    void FillJson(Json::Node& node) const override;
+    const StopBusesHolder buses;
   };
 
   enum class ReadRequestType {
@@ -185,32 +157,37 @@ namespace Routes {
   class ReadRequest;
   using ReadRequestHolder = std::unique_ptr<ReadRequest>;
 
+  using ResponseHolder = std::unique_ptr<Response>;
+
   class ReadRequest : public Request<ReadRequestType> {
   public:
     using Type = ReadRequestType;
     using Request::Request;
     static const std::unordered_map<std::string_view, Type> STR_TO_REQUEST_TYPE;
     static ReadRequestHolder Create(Type type);
-    virtual ResponseHolder Execute(const Routes& routes) const = 0;
+    virtual void FromJson(const Json::Node& node) override;
+    virtual ResponseHolder Execute(const Routes& buses) const = 0;
+  protected:
+    int id;
   };
 
   class ReadRouteStatsRequest final : public ReadRequest {
   public:
     friend class Routes;
     ReadRouteStatsRequest() : ReadRequest(Type::BUS) {}
-    void ParseFrom(std::string_view input) override;
-    ResponseHolder Execute(const Routes& routes) const override;
+    void FromJson(const Json::Node& node) override;
+    ResponseHolder Execute(const Routes& buses) const override;
   private:
-    std::string bus_number;
+    std::string name;
   };
 
-  class ReadStopRoutesRequest final : public ReadRequest {
+  class ReadStopBusesRequest final : public ReadRequest {
   public:
     friend class Routes;
-    ReadStopRoutesRequest() : ReadRequest(Type::STOP) {}
-    void ParseFrom(std::string_view input) override;
-    ResponseHolder Execute(const Routes& routes) const override;
+    ReadStopBusesRequest() : ReadRequest(Type::STOP) {}
+    void FromJson(const Json::Node& node) override;
+    ResponseHolder Execute(const Routes& buses) const override;
   private:
-    std::string stop_name;
+    std::string name;
   };
 }
