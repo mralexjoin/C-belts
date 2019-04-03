@@ -1,6 +1,8 @@
 #pragma once
 
 #include "json.h"
+#include "router.h"
+#include "graph.h"
 
 #include <iostream>
 #include <memory>
@@ -13,6 +15,7 @@
 
 namespace Routes {
   using StringHolder = std::shared_ptr<const std::string>;
+  using Time = double;
 
   using StopBuses = std::set<std::string_view>;
   using StopBusesHolder = std::shared_ptr<StopBuses>;
@@ -113,14 +116,21 @@ namespace Routes {
     std::vector<StringHolder> stops;
   };
 
-  class Response {
+  class JsonSerializable {
+  public:
+    virtual Json::Node ToJson() const = 0;
+    virtual ~JsonSerializable() = default;
+  private:
+    virtual void FillJson(Json::Node& node) const = 0;
+  };
+
+  class Response : public JsonSerializable {
   public:
     Response(int id) : id(id) {}
-    Json::Node ToJson() const;
+    Json::Node ToJson() const override;
     virtual ~Response() = default;
   private:
     virtual bool Empty() const = 0;
-    virtual void FillJson(Json::Node& node) const = 0;
     const int id;
   };
 
@@ -149,9 +159,66 @@ namespace Routes {
     const StopBusesHolder buses;
   };
 
+  using Route = std::optional<Graph::Router<Time>::RouteInfo>;
+
+  enum RouteItemType {
+    WAIT,
+    BUS
+  };
+
+  class RouteItem;
+  using RouteItemHolder = std::shared_ptr<RouteItem>;
+
+  class RouteItem : public JsonSerializable {
+  public:
+    RouteItem(RouteItemType type, Time time) :
+      type(type),
+      time(time) {}
+    virtual bool IsCombinableWith(RouteItemHolder other) const = 0;
+    Json::Node ToJson() const override;
+  private:
+    RouteItemType type;
+    Time time;
+  };
+
+  using RouteItems = std::optional<std::vector<RouteItemHolder>>;
+
+  class WaitRouteItem final : public RouteItem {
+  public:
+    WaitRouteItem(StopHolder stop, Time time) :
+      RouteItem(RouteItemType::WAIT, time),
+      stop(stop) {}
+  private:
+    void FillJson(Json::Node& node) const override;
+    StopHolder stop;
+  };
+
+  class BusRouteItem final : public RouteItem {
+  public:
+    BusRouteItem(BusHolder bus, Time time) :
+      RouteItem(RouteItemType::BUS, time),
+      bus(bus) {}
+  private:
+    void FillJson(Json::Node& node) const override;
+    BusHolder bus;
+  };
+
+  class RouteResponse final : public Response {
+  public:
+    RouteResponse(int id, RouteItems items) :
+      Response(id),
+      items(move(items)) {}
+  private:
+    bool Empty() const override;
+    void FillJson(Json::Node& node) const override;
+    const double total_time;
+    RouteItems items;
+  };
+
   enum class ReadRequestType {
     BUS,
-    STOP
+    STOP,
+    ROUTE
   };
 
   class ReadRequest;
@@ -189,5 +256,16 @@ namespace Routes {
     ResponseHolder Execute(const Routes& buses) const override;
   private:
     std::string name;
+  };
+
+  class ReadRouteRequest final : public ReadRequest {
+  public:
+    friend class Routes;
+    ReadRouteRequest() : ReadRequest(Type::ROUTE) {}
+    void FromJson(const Json::Node& node) override;
+    ResponseHolder Execute(const Routes& buses) const override;
+  private:
+    std::string from;
+    std::string to;
   };
 }

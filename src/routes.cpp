@@ -7,7 +7,13 @@
 using namespace std;
 
 namespace Routes {
-   StopHolder Routes::GetCreateStop(StringHolder name) {
+  void Routes::SetSettings(int bus_wait_time, double bus_velocity) {
+    this->bus_wait_time = bus_wait_time;
+    this->bus_velocity = bus_velocity;
+  }
+
+  StopHolder Routes::GetCreateStop(StringHolder name) {
+    
     if (auto it = stops.find(*name); it != stops.end()) {
       return it->second;
     }
@@ -31,11 +37,10 @@ namespace Routes {
                                      request->is_roundtrip);
     bus->stops.reserve(request->stops.size());
     for (const auto& name : request->stops) {
-      StopHolder stop = GetCreateStop(name);
+      auto stop = GetCreateStop(name);
       stop->buses->insert(*bus->name);
       bus->stops.push_back(stop);
     }
-
     buses.insert({ *bus->name, bus });
   }
 
@@ -128,10 +133,61 @@ namespace Routes {
     return 2 * EARTH_RADIUS * atan2(sqrt(a), sqrt(1 - a));
   }
 
-  ostream& operator <<(ostream& out_stream, const BusStats& stats) {
-    return out_stream << stats.stop_count << " stops on route, "
-                      << stats.unique_stop_count << " unique stops, "
-                      << stats.route_length << " route length, "
-                      << stats.curvature << " curvature";
+  void Routes::BuildRouter() {
+    auto counter = Stop::COUNTER;
+    for (const auto& [bus_name, bus] : buses) {
+      const auto& buses_stops = bus->stops;
+      for (auto from_stop = buses_stops.begin(), to_stop = next(from_stop);
+          to_stop != buses_stops.end();
+          from_stop = next(from_stop), to_stop = next(to_stop)) {
+        auto lhs = counter++;
+        auto rhs = counter;
+        auto stop_id = (*from_stop)->id;
+        auto distance = (*from_stop)->distances_to_stops.at(*to_stop);
+        graph.AddEdge({ lhs, rhs,  distance / bus_velocity });
+        graph.AddEdge({ stop_id, lhs, bus_wait_time });
+        graph.AddEdge({ lhs, stop_id, 0 });
+      }
+      
+      if (!buses_stops.empty()) {
+        auto stop = buses_stops.back();
+        graph.AddEdge({ stop->id, counter, bus_wait_time });
+        graph.AddEdge({ counter, stop->id, 0 });
+        if (bus->is_roundtrip) {
+          auto lhs = counter++;
+          auto rhs = counter++;
+          graph.AddEdge({ lhs, rhs, stop->distances_to_stops.at(buses_stops.front()) / bus_velocity });
+          graph.AddEdge({ rhs, buses_stops.front()->id, 0 });
+        }
+        else {
+          ++counter;
+          for (auto from_stop = buses_stops.rbegin(), to_stop = next(from_stop);
+              to_stop != buses_stops.rend();
+              from_stop = next(from_stop), to_stop = next(to_stop)) {
+            auto lhs = counter++;
+            auto rhs = counter;
+            auto stop_id = (*from_stop)->id;
+            auto distance = (*from_stop)->distances_to_stops.at(*to_stop);
+            graph.AddEdge({ lhs, rhs,  distance / bus_velocity });
+            graph.AddEdge({ stop_id, lhs, bus_wait_time });
+            graph.AddEdge({ lhs, stop_id, 0 });
+          }
+        }
+      }
+    }
+  }
+
+  Route Routes::GetRoute(const ReadRouteRequest* request) const {
+    auto route = router->BuildRoute(stops.at(request->from)->id, stops.at(request->to)->id);
+
+  }
+
+  void Routes::CreateRouter() const {
+    size_t bus_counter = 0;
+    for (const auto& [bus_name, bus] : buses) {
+      for (const auto& stop : bus->stops) {
+
+      }
+    }
   }
 };

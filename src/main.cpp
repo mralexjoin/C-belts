@@ -11,6 +11,12 @@ using namespace Json;
 Routes::Routes CreateRoutes(Document& document) {
   Routes::Routes buses;
   auto& requests_by_type = document.GetRoot().AsMap();
+  if (const auto& settings_node = requests_by_type.find("routing_settings");
+      settings_node != requests_by_type.end()) {
+    const auto& settings = settings_node->second.AsMap();
+    buses.SetSettings(settings.at("bus_wait_time").AsInt(),
+                      settings.at("bus_velocity").AsDouble());
+  }
   if (const auto& requests = requests_by_type.find("base_requests");
       requests != requests_by_type.end()) {
     for (const auto& request : Routes::ReadRequests<Routes::ModifyRequest>(requests->second)) {
@@ -33,13 +39,7 @@ Document ReadRoutes(const Routes::Routes& buses, Document& document) {
 }
 
 void ProcessQueries(istream& input, ostream& output) {
-  ostringstream buffer;
-  for (string str; getline(input, str);) {
-    cerr << str;
-    buffer << str;
-  }
-  istringstream new_input(buffer.str());
-  Document in_json = Load(new_input);
+  Document in_json = Load(input);
   Document out_json = ReadRoutes(CreateRoutes(in_json), in_json);
   Save(out_json, output);
 }
@@ -51,36 +51,36 @@ void TestFromTask() {
   string expected = R"([
   {
     "curvature": 1.36124,
-    "request_id": 1965312327,
+    "request_id": 92297645,
     "route_length": 5950,
     "stop_count": 6,
     "unique_stop_count": 5
   },
   {
     "curvature": 1.31808,
-    "request_id": 519139350,
+    "request_id": 1403850987,
     "route_length": 27600,
     "stop_count": 5,
     "unique_stop_count": 3
   },
   {
     "error_message": "not found",
-    "request_id": 194217464
+    "request_id": 197444743
   },
   {
     "error_message": "not found",
-    "request_id": 746888088
+    "request_id": 605625806
   },
   {
     "buses": [],
-    "request_id": 65100610
+    "request_id": 401974628
   },
   {
     "buses": [
       "256",
       "828"
     ],
-    "request_id": 1042838872
+    "request_id": 435078922
   }
 ])";
   ASSERT_EQUAL(output.str(), expected);
@@ -88,11 +88,39 @@ void TestFromTask() {
 
 void TestSecond() {
   istringstream input(R"({"base_requests": [{"type": "Stop", "name": "A", "latitude": 0.5, "longitude": -1, "road_distances": {"B": 100000}}, {"type": "Stop", "name": "B", "latitude": 0, "longitude": -1.1, "road_distances": {}}, {"type": "Bus", "name": "256", "stops": ["B", "A"], "is_roundtrip": false}], "stat_requests": [{"id": 2143866354, "type": "Bus", "name": "256"}, {"id": 1759785269, "type": "Stop", "name": "A"}, {"id": 252557929, "type": "Stop", "name": "B"}, {"id": 1839286974, "type": "Stop", "name": "C"}]})");
-  ProcessQueries(input, cout);
+  ostringstream output;
+  ProcessQueries(input, output);
+  string expected = R"([
+  {
+    "curvature": 1.76372,
+    "request_id": 2143866354,
+    "route_length": 200000,
+    "stop_count": 3,
+    "unique_stop_count": 2
+  },
+  {
+    "buses": [
+      "256"
+    ],
+    "request_id": 1759785269
+  },
+  {
+    "buses": [
+      "256"
+    ],
+    "request_id": 252557929
+  },
+  {
+    "error_message": "not found",
+    "request_id": 1839286974
+  }
+])";
+  ASSERT_EQUAL(output.str(), expected);
 }
 
 void RunTests() {
   TestRunner tr;
+  RUN_TEST(tr, TestFromTask);
   RUN_TEST(tr, TestSecond);
 }
 

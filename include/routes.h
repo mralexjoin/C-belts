@@ -3,6 +3,7 @@
 #include "json.h"
 #include "requests.h"
 
+#include <array>
 #include <memory>
 #include <ostream>
 #include <set>
@@ -22,16 +23,19 @@ namespace Routes {
   class Bus;
   using BusHolder = std::shared_ptr<Bus>;
 
-  class Stop;
+  struct Stop;
   using StopHolder = std::shared_ptr<Stop>;
   struct Stop {
+    static Graph::VertexId COUNTER = 0;
     Stop(StringHolder name) :
       name(name),
-      buses(std::make_shared<StopBuses>()) {}
+      buses(std::make_shared<StopBuses>()),
+      id(COUNTER++) {}
     StringHolder name;
     Position position;
     std::unordered_map<StopHolder, int> distances_to_stops;
     StopBusesHolder buses;
+    Graph::VertexId id;
   };
 
   struct BusStats {
@@ -69,20 +73,41 @@ namespace Routes {
     mutable BusStatsHolder routes_stats;
   };
 
+  struct Vertex {
+    StopHolder stop;
+    BusHolder bus;
+  };
+
   class AddStopRequest;
   class AddBusRequest;
   class ReadRouteStatsRequest;
   class ReadStopBusesRequest;
 
   class Routes {
+  private:
+    static const size_t MAX_STOP_SIZE = 100;
+    static const size_t MAX_BUS_SIZE = 100;
+    static const size_t MAX_VERTEXES_SIZE = MAX_STOP_SIZE * (MAX_BUS_SIZE + 1);
   public:
+    Routes() : graph(MAX_VERTEXES_SIZE) {}
     void AddStop(const AddStopRequest* request);
     void AddBus(const AddBusRequest* request);
     BusStatsHolder GetRouteStats(const ReadRouteStatsRequest* request) const;
     StopBusesHolder GetStopBuses(const ReadStopBusesRequest* request) const;
+    Route GetRoute(const ReadRouteRequest* request) const;
+    void SetSettings(int bus_wait_time, double bus_velocity);
+    void BuildRouter();
   private:
     StopHolder GetCreateStop(StringHolder name);
+    void CreateRouter() const;
+
     std::unordered_map<std::string_view, StopHolder> stops;
     std::unordered_map<std::string_view, BusHolder> buses;
+    int bus_wait_time;
+    double bus_velocity;
+
+    std::array<std::variant<StopHolder, BusHolder>, MAX_VERTEXES_SIZE> edges;
+    Graph::DirectedWeightedGraph<Weight> graph;
+    std::unique_ptr<Graph::Router<Weight>> router;
   };
 }

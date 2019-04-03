@@ -72,6 +72,8 @@ namespace Routes {
       return make_unique<ReadStopBusesRequest>();
     case Type::BUS:
       return make_unique<ReadRouteStatsRequest>();
+    case Type::ROUTE:
+      return make_unique<ReadRouteRequest>();
     default:
       return nullptr;
     }
@@ -97,6 +99,16 @@ namespace Routes {
 
   ResponseHolder ReadStopBusesRequest::Execute(const Routes& buses) const {
     return make_unique<StopResponse>(id, buses.GetStopBuses(this));
+  }
+
+  void ReadRouteRequest::FromJson(const Node& node) {
+    ReadRequest::FromJson(node);
+    from = node.AsMap().at("from").AsString();
+    to = node.AsMap().at("to").AsString();
+  }
+
+  ResponseHolder ReadRouteRequest::Execute(const Routes& buses) const {
+    return make_unique<RouteResponse>(id, buses.GetRoute(this));
   }
 
   Node Response::ToJson() const {
@@ -134,5 +146,14 @@ namespace Routes {
       stop_buses.push_back(string(bus));
     }
     object_map["buses"] = move(stop_buses);
+  }
+
+  void RouteResponse::FillJson(Node& node) const {
+    (void)node;
+    //auto& object_map = node.AsMap();
+  }
+
+  bool RouteResponse::Empty() const {
+    return route_info == nullopt;
   }
 }
