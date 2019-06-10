@@ -20,7 +20,7 @@ if (MSVC)
   set(CMAKE_CXX_FLAGS_DEBUG "/Zi")
 else()
   set(CMAKE_CXX_FLAGS "-Wall -Wextra -Werror -std=c++17 -pthread")
-  set(CMAKE_CXX_FLAGS_DEBUG "-g -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -fsanitize=address")
+  set(CMAKE_CXX_FLAGS_DEBUG "-g -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -fsanitize=address -fsanitize=undefined")
 endif()
 
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
