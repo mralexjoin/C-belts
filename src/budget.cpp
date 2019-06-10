@@ -1,15 +1,33 @@
-#include <array>
-#include <cassert>
-#include <cstdlib>
+#include "test_runner.h"
+
+#include <cmath>
+#include <cstdint>
 #include <ctime>
+#include <exception>
 #include <iostream>
+#include <iterator>
+#include <memory>
 #include <optional>
 #include <sstream>
-#include <stdexcept>
-#include <string_view>
-#include <utility>
+#include <string>
+#include <system_error>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
 
 using namespace std;
+
+template<typename It>
+class Range {
+public:
+  Range(It begin, It end) : begin_(begin), end_(end) {}
+  It begin() const { return begin_; }
+  It end() const { return end_; }
+
+private:
+  It begin_;
+  It end_;
+};
 
 pair<string_view, optional<string_view>> SplitTwoStrict(string_view s, string_view delimiter = " ") {
   const size_t pos = s.find(delimiter);
@@ -51,6 +69,251 @@ void ValidateBounds(Number number_to_check, Number min_value, Number max_value) 
     throw out_of_range(error.str());
   }
 }
+
+struct MoneyState {
+  double earned = 0.0;
+  double spent = 0.0;
+
+  double ComputeIncome() const {
+    return earned - spent;
+  }
+
+  MoneyState& operator+=(const MoneyState& other) {
+    earned += other.earned;
+    spent += other.spent;
+    return *this;
+  }
+
+  MoneyState operator+(const MoneyState& other) const {
+    return MoneyState(*this) += other;
+  }
+
+  MoneyState operator*(double factor) const {
+    return {earned * factor, spent * factor};
+  }
+};
+
+ostream& operator<<(ostream& stream, const MoneyState& state) {
+  return stream << "{+" << state.earned << ", -" << state.spent << "}";
+}
+
+struct IndexSegment {
+  size_t left;
+  size_t right;
+
+  size_t length() const {
+    return right - left;
+  }
+  bool empty() const {
+    return length() == 0;
+  }
+
+  bool Contains(IndexSegment other) const {
+    return left <= other.left && other.right <= right;
+  }
+};
+
+IndexSegment IntersectSegments(IndexSegment lhs, IndexSegment rhs) {
+  const size_t left = max(lhs.left, rhs.left);
+  const size_t right = min(lhs.right, rhs.right);
+  return {left, max(left, right)};
+}
+
+bool AreSegmentsIntersected(IndexSegment lhs, IndexSegment rhs) {
+  return !(lhs.right <= rhs.left || rhs.right <= lhs.left);
+}
+
+
+struct BulkMoneyAdder {
+  MoneyState delta = {};
+};
+
+constexpr uint8_t TAX_PERCENTAGE = 13;
+
+struct BulkTaxApplier {
+  double factor = 1.0;
+  uint32_t count = 0;
+
+  static BulkTaxApplier FromPercentage(uint8_t percentage) {
+    return {1.0 - percentage / 100.0};
+  }
+};
+
+template <typename Data, typename BulkOperation>
+class SummingSegmentTree;
+
+template <typename Data, typename BulkOperation>
+using SummingSegmentTreeHolder = std::shared_ptr<SummingSegmentTree<Data, BulkOperation>>;
+
+template <typename Data, typename BulkOperation>
+class BaseBulkOperation {
+public:
+  using TreeHolder = SummingSegmentTreeHolder<Data, BulkOperation>;
+  BaseBulkOperation(const TreeHolder& tree) : tree_(tree.get()) {}
+private:
+  SummingSegmentTree<Data, BulkOperation>* tree_;
+};
+
+class BulkLinearUpdater : BaseBulkOperation<MoneyState, BulkLinearUpdater> {
+public:
+  BulkLinearUpdater(const TreeHolder& tree = nullptr) : BaseBulkOperation(tree) {}
+
+  BulkLinearUpdater(const TreeHolder& tree, const BulkMoneyAdder& add)
+      : BaseBulkOperation(tree),
+        add_(add)
+  {}
+
+  BulkLinearUpdater(const TreeHolder& tree, const BulkTaxApplier& tax)
+      : BaseBulkOperation(tree),
+        tax_(tax)
+  {}
+
+  void CombineWith(const BulkLinearUpdater& other) {
+    BaseBulkOperation::operator=(other);
+    tax_.factor *= other.tax_.factor;
+    add_.delta.spent += other.add_.delta.spent;
+    add_.delta.earned = add_.delta.earned * other.tax_.factor + other.add_.delta.earned;
+  }
+
+  MoneyState Collapse(const MoneyState& origin, IndexSegment segment) const {
+    return MoneyState{origin.earned * tax_.factor, origin.spent}
+        + add_.delta * segment.length();
+  }
+
+private:
+  // apply tax first, then add
+  BulkTaxApplier tax_;
+  BulkMoneyAdder add_;
+};
+
+
+template <typename Data, typename BulkOperation>
+class SummingSegmentTree {
+public:
+  SummingSegmentTree(size_t size) : root_(Build({0, size})) {}
+
+  Data ComputeSum(IndexSegment segment) const {
+    return this->TraverseWithQuery(root_, segment, ComputeSumVisitor{});
+  }
+
+  void AddBulkOperation(IndexSegment segment, const BulkOperation& operation) {
+    this->TraverseWithQuery(root_, segment, AddBulkOperationVisitor{operation});
+  }
+  ~SummingSegmentTree() {
+    delete root_;
+  }
+
+private:
+  struct Node;
+
+  struct Node {
+    Node* left;
+    Node* right;
+    IndexSegment segment;
+    Data data;
+    BulkOperation postponed_bulk_operation;
+    ~Node() {
+      delete left;
+      delete right;
+    }
+  };
+
+  Node* root_;
+
+  static Node* Build(IndexSegment segment) {
+    if (segment.empty()) {
+      return nullptr;
+    } else if (segment.length() == 1) {
+      return new Node{
+        .left = nullptr,
+        .right = nullptr,
+        .segment = segment,
+      };
+    } else {
+      const size_t middle = segment.left + segment.length() / 2;
+      return new Node{
+        .left = Build({segment.left, middle}),
+        .right = Build({middle, segment.right}),
+        .segment = segment,
+      };
+    }
+  }
+
+  template <typename Visitor>
+  static typename Visitor::ResultType TraverseWithQuery(Node* node, IndexSegment query_segment, Visitor visitor) {
+    if (!node || !AreSegmentsIntersected(node->segment, query_segment)) {
+      return visitor.ProcessEmpty(node);
+    } else {
+      PropagateBulkOperation(node);
+      if (query_segment.Contains(node->segment)) {
+        return visitor.ProcessFull(node);
+      } else {
+        if constexpr (is_void_v<typename Visitor::ResultType>) {
+          TraverseWithQuery(node->left, query_segment, visitor);
+          TraverseWithQuery(node->right, query_segment, visitor);
+          return visitor.ProcessPartial(node, query_segment);
+        } else {
+          return visitor.ProcessPartial(
+              node, query_segment,
+              TraverseWithQuery(node->left, query_segment, visitor),
+              TraverseWithQuery(node->right, query_segment, visitor)
+          );
+        }
+      }
+    }
+  }
+
+  class ComputeSumVisitor {
+  public:
+    using ResultType = Data;
+
+    Data ProcessEmpty(Node*) const {
+      return {};
+    }
+
+    Data ProcessFull(Node* node) const {
+      return node->data;
+    }
+
+    Data ProcessPartial(Node*, IndexSegment, const Data& left_result, const Data& right_result) const {
+      return left_result + right_result;
+    }
+  };
+
+  class AddBulkOperationVisitor {
+  public:
+    using ResultType = void;
+
+    explicit AddBulkOperationVisitor(const BulkOperation& operation)
+        : operation_(operation)
+    {}
+
+    void ProcessEmpty(Node*) const {}
+
+    void ProcessFull(Node* node) const {
+      node->postponed_bulk_operation.CombineWith(operation_);
+      node->data = operation_.Collapse(node->data, node->segment);
+    }
+
+    void ProcessPartial(Node* node, IndexSegment) const {
+      node->data = (node->left ? node->left->data : Data()) + (node->right ? node->right->data : Data());
+    }
+
+  private:
+    const BulkOperation& operation_;
+  };
+
+  static void PropagateBulkOperation(Node* node) {
+    for (auto* child_ptr : {node->left, node->right}) {
+      if (child_ptr) {
+        child_ptr->postponed_bulk_operation.CombineWith(node->postponed_bulk_operation);
+        child_ptr->data = node->postponed_bulk_operation.Collapse(child_ptr->data, child_ptr->segment);
+      }
+    }
+    node->postponed_bulk_operation = BulkOperation();
+  }
+};
+
 
 class Date {
 public:
@@ -96,139 +359,219 @@ int ComputeDaysDiff(const Date& date_to, const Date& date_from) {
 static const Date START_DATE = Date::FromString("2000-01-01");
 static const Date END_DATE = Date::FromString("2100-01-01");
 static const size_t DAY_COUNT = ComputeDaysDiff(END_DATE, START_DATE);
-static const size_t DAY_COUNT_P2 = 1 << 16;
-static const size_t VERTEX_COUNT = DAY_COUNT_P2 * 2;
 
 size_t ComputeDayIndex(const Date& date) {
   return ComputeDaysDiff(date, START_DATE);
 }
 
-
-array<double, VERTEX_COUNT> tree_values, tree_add, tree_factor, tree_spend, tree_spend_values;
-
-void Init() {
-  tree_values.fill(0);
-  tree_add.fill(0);
-  tree_factor.fill(1);
-  tree_spend.fill(0);
-  tree_spend_values.fill(0);
+IndexSegment MakeDateSegment(const Date& date_from, const Date& date_to) {
+  return {ComputeDayIndex(date_from), ComputeDayIndex(date_to) + 1};
 }
 
-void Push(size_t v, size_t l, size_t r) {
-  for (size_t w = v * 2; w <= v * 2 + 1; ++w) {
-    if (w < VERTEX_COUNT) {
-      tree_factor[w] *= tree_factor[v];
-      (tree_add[w] *= tree_factor[v]) += tree_add[v];
-      (tree_values[w] *= tree_factor[v]) += tree_add[v] * (r - l) / 2.0;
-      tree_spend[w] += tree_spend[v];
-      tree_spend_values[w] += tree_spend[v] * (r - l) / 2.0;
+
+class BudgetManager {
+public:
+  using TreeHolder = SummingSegmentTreeHolder<MoneyState, BulkLinearUpdater>;
+
+  BudgetManager() : tree_(new SummingSegmentTree<MoneyState, BulkLinearUpdater>(DAY_COUNT)) {}
+  const TreeHolder& GetTree() const {
+    return tree_;
+  }
+private:
+  TreeHolder tree_;
+};
+
+
+struct Request;
+using RequestHolder = unique_ptr<Request>;
+
+struct Request {
+  enum class Type {
+    COMPUTE_INCOME,
+    EARN,
+    SPEND,
+    PAY_TAX
+  };
+
+  Request(Type type) : type(type) {}
+  static RequestHolder Create(Type type);
+  virtual void ParseFrom(string_view input) = 0;
+  virtual ~Request() = default;
+
+  const Type type;
+};
+
+const unordered_map<string_view, Request::Type> STR_TO_REQUEST_TYPE = {
+    {"ComputeIncome", Request::Type::COMPUTE_INCOME},
+    {"Earn", Request::Type::EARN},
+    {"Spend", Request::Type::SPEND},
+    {"PayTax", Request::Type::PAY_TAX},
+};
+
+template <typename ResultType>
+struct ReadRequest : Request {
+  using Request::Request;
+  virtual ResultType Process(const BudgetManager& manager) const = 0;
+};
+
+struct ModifyRequest : Request {
+  using Request::Request;
+  virtual void Process(BudgetManager& manager) const = 0;
+};
+
+struct ComputeIncomeRequest : ReadRequest<double> {
+  ComputeIncomeRequest() : ReadRequest(Type::COMPUTE_INCOME) {}
+  void ParseFrom(string_view input) override {
+    date_from = Date::FromString(ReadToken(input));
+    date_to = Date::FromString(input);
+  }
+
+  double Process(const BudgetManager& manager) const override {
+    return manager.GetTree()->ComputeSum(MakeDateSegment(date_from, date_to)).ComputeIncome();
+  }
+
+  Date date_from = START_DATE;
+  Date date_to = START_DATE;
+};
+
+template <int SIGN>
+struct AddMoneyRequest : ModifyRequest {
+  static_assert(SIGN == -1 || SIGN == 1);
+
+  AddMoneyRequest() : ModifyRequest(SIGN == 1 ? Type::EARN : Type::SPEND) {}
+  void ParseFrom(string_view input) override {
+    date_from = Date::FromString(ReadToken(input));
+    date_to = Date::FromString(ReadToken(input));
+    value = ConvertToInt(input);
+  }
+
+  void Process(BudgetManager& manager) const override {
+    const auto date_segment = MakeDateSegment(date_from, date_to);
+    const double daily_value = value * 1.0 / date_segment.length();
+    const MoneyState daily_change = SIGN == 1 ? MoneyState{.earned = daily_value} : MoneyState{.spent = daily_value};
+    manager.GetTree()->AddBulkOperation(
+        date_segment,
+        BulkLinearUpdater(manager.GetTree(), BulkMoneyAdder{daily_change})
+    );
+  }
+
+  Date date_from = START_DATE;
+  Date date_to = START_DATE;
+  size_t value = 0;
+};
+
+struct PayTaxRequest : ModifyRequest {
+  PayTaxRequest() : ModifyRequest(Type::PAY_TAX) {}
+  void ParseFrom(string_view input) override {
+    date_from = Date::FromString(ReadToken(input));
+    date_to = Date::FromString(ReadToken(input));
+    percentage = ConvertToInt(input);
+  }
+
+  void Process(BudgetManager& manager) const override {
+    manager.GetTree()->AddBulkOperation(
+        MakeDateSegment(date_from, date_to),
+        BulkLinearUpdater(manager.GetTree(), BulkTaxApplier::FromPercentage(percentage))
+    );
+  }
+
+  Date date_from = START_DATE;
+  Date date_to = START_DATE;
+  uint8_t percentage = 0;
+};
+
+RequestHolder Request::Create(Request::Type type) {
+  switch (type) {
+    case Request::Type::COMPUTE_INCOME: {
+      return make_unique<ComputeIncomeRequest>();
+    }
+    case Request::Type::EARN: {
+      return make_unique<AddMoneyRequest<+1>>();
+    }
+    case Request::Type::SPEND: {
+      return make_unique<AddMoneyRequest<-1>>();
+    }
+    case Request::Type::PAY_TAX: {
+      return make_unique<PayTaxRequest>();
+    }
+    default:
+      return nullptr;
+  }
+}
+
+template <typename Number>
+Number ReadNumberOnLine(istream& stream) {
+  Number number = 0;
+  stream >> number;
+  string dummy;
+  getline(stream, dummy);
+  return number;
+}
+
+optional<Request::Type> ConvertRequestTypeFromString(string_view type_str) {
+  if (const auto it = STR_TO_REQUEST_TYPE.find(type_str);
+      it != STR_TO_REQUEST_TYPE.end()) {
+    return it->second;
+  } else {
+    return nullopt;
+  }
+}
+
+RequestHolder ParseRequest(string_view request_str) {
+  const auto request_type = ConvertRequestTypeFromString(ReadToken(request_str));
+  if (!request_type) {
+    return nullptr;
+  }
+  RequestHolder request = Request::Create(*request_type);
+  if (request) {
+    request->ParseFrom(request_str);
+  };
+  return request;
+}
+
+vector<RequestHolder> ReadRequests(istream& in_stream = cin) {
+  const size_t request_count = ReadNumberOnLine<size_t>(in_stream);
+
+  vector<RequestHolder> requests;
+  requests.reserve(request_count);
+
+  for (size_t i = 0; i < request_count; ++i) {
+    string request_str;
+    getline(in_stream, request_str);
+    if (auto request = ParseRequest(request_str)) {
+      requests.push_back(move(request));
     }
   }
-  tree_factor[v] = 1;
-  tree_add[v] = 0;
-  tree_spend[v] = 0;
+  return requests;
 }
 
-double ComputeSum(size_t v, size_t l, size_t r, size_t ql, size_t qr) {
-  if (v >= VERTEX_COUNT || qr <= l || r <= ql) {
-    return 0;
+vector<double> ProcessRequests(const vector<RequestHolder>& requests) {
+  vector<double> responses;
+  BudgetManager manager;
+  for (const auto& request_holder : requests) {
+    if (request_holder->type == Request::Type::COMPUTE_INCOME) {
+      const auto& request = static_cast<const ComputeIncomeRequest&>(*request_holder);
+      responses.push_back(request.Process(manager));
+    } else {
+      const auto& request = static_cast<const ModifyRequest&>(*request_holder);
+      request.Process(manager);
+    }
   }
-  Push(v, l, r);
-  if (ql <= l && r <= qr) {
-    return tree_values[v] - tree_spend_values[v];
-  }
-  return ComputeSum(v * 2, l, (l + r) / 2, ql, qr)
-      + ComputeSum(v * 2 + 1, (l + r) / 2, r, ql, qr);
+  return responses;
 }
 
-void Add(size_t v, size_t l, size_t r, size_t ql, size_t qr, double value) {
-  if (v >= VERTEX_COUNT || qr <= l || r <= ql) {
-    return;
+void PrintResponses(const vector<double>& responses, ostream& stream = cout) {
+  for (const double response : responses) {
+    stream << response << endl;
   }
-  Push(v, l, r);
-  if (ql <= l && r <= qr) {
-    tree_add[v] += value;
-    tree_values[v] += value * (r - l);
-    return;
-  }
-  Add(v * 2, l, (l + r) / 2, ql, qr, value);
-  Add(v * 2 + 1, (l + r) / 2, r, ql, qr, value);
-  tree_values[v] =
-      (v * 2 < VERTEX_COUNT ? tree_values[v * 2] : 0)
-      + (v * 2 + 1 < VERTEX_COUNT ? tree_values[v * 2 + 1] : 0);
-}
-
-void Spend(size_t v, size_t l, size_t r, size_t ql, size_t qr, double value) {
-  if (v >= VERTEX_COUNT || qr <= l || r <= ql) {
-    return;
-  }
-  Push(v, l, r);
-  if (ql <= l && r <= qr) {
-    tree_spend[v] += value;
-    tree_spend_values[v] += value * (r - l);
-    return;
-  }
-  Spend(v * 2, l, (l + r) / 2, ql, qr, value);
-  Spend(v * 2 + 1, (l + r) / 2, r, ql, qr, value);
-  tree_spend_values[v] =
-    (v * 2 < VERTEX_COUNT ? tree_spend_values[v * 2] : 0)
-    + (v * 2 + 1 < VERTEX_COUNT ? tree_spend_values[v * 2 + 1] : 0);
-}
-
-void Multiply(size_t v, size_t l, size_t r, size_t ql, size_t qr, double tax_factor) {
-  if (v >= VERTEX_COUNT || qr <= l || r <= ql) {
-    return;
-  }
-  Push(v, l, r);
-  if (ql <= l && r <= qr) {
-    tree_factor[v] *= tax_factor;
-    tree_add[v] *= tax_factor;
-    tree_values[v] *= tax_factor;
-    return;
-  }
-  Multiply(v * 2, l, (l + r) / 2, ql, qr, tax_factor);
-  Multiply(v * 2 + 1, (l + r) / 2, r, ql, qr, tax_factor);
-  tree_values[v] =
-      (v * 2 < VERTEX_COUNT ? tree_values[v * 2] : 0)
-      + (v * 2 + 1 < VERTEX_COUNT ? tree_values[v * 2 + 1] : 0);
 }
 
 
 int main() {
   cout.precision(25);
-  assert(DAY_COUNT <= DAY_COUNT_P2 && DAY_COUNT_P2 < DAY_COUNT * 2);
-
-  Init();
-
-  int q;
-  cin >> q;
-
-  for (int i = 0; i < q; ++i) {
-    string query_type;
-    cin >> query_type;
-
-    string date_from_str, date_to_str;
-    cin >> date_from_str >> date_to_str;
-
-    auto idx_from = ComputeDayIndex(Date::FromString(date_from_str));
-    auto idx_to = ComputeDayIndex(Date::FromString(date_to_str)) + 1;
-
-    if (query_type == "ComputeIncome") {
-      cout << ComputeSum(1, 0, DAY_COUNT_P2, idx_from, idx_to) << endl;
-    } else if (query_type == "PayTax") {
-      double tax_percentage;
-      cin >> tax_percentage;
-      Multiply(1, 0, DAY_COUNT_P2, idx_from, idx_to, 1.0 - tax_percentage / 100.0);
-    } else if (query_type == "Earn") {
-      double value;
-      cin >> value;
-      Add(1, 0, DAY_COUNT_P2, idx_from, idx_to, value / (idx_to - idx_from));
-    } else if (query_type == "Spend") {
-      double value;
-      cin >> value;
-      Spend(1, 0, DAY_COUNT_P2, idx_from, idx_to, value / (idx_to - idx_from));
-    }
-  }
+  const auto requests = ReadRequests();
+  const auto responses = ProcessRequests(requests);
+  PrintResponses(responses);
 
   return 0;
 }
