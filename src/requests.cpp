@@ -1,14 +1,14 @@
 #include "requests.h"
-#include "routes.h"
 
 #include <algorithm>
+#include <numeric>
 #include <sstream>
 #include <stdexcept>
 
 using namespace std;
 using namespace Json;
 
-namespace Routes {
+namespace BusesRouting {
   const std::unordered_map<std::string_view, ModifyRequest::Type> ModifyRequest::STR_TO_REQUEST_TYPE = {
     {"Stop", Type::STOP},
     {"Bus", Type::BUS}
@@ -16,7 +16,8 @@ namespace Routes {
 
   const std::unordered_map<std::string_view, ReadRequest::Type> ReadRequest::STR_TO_REQUEST_TYPE = {
     {"Stop", Type::STOP},
-    {"Bus", Type::BUS}
+    {"Bus", Type::BUS},
+    {"Route", Type::ROUTE}
   };
 
   ModifyRequestHolder ModifyRequest::Create(ModifyRequest::Type type) {
@@ -36,14 +37,17 @@ namespace Routes {
     latitude = object.at("latitude").AsDouble();
     longitude = object.at("longitude").AsDouble();
 
-    const auto& road_distances_json = object.at("road_distances").AsMap();
-    road_distances.reserve(road_distances_json.size());
-    for (const auto& [name, distance] : road_distances_json) {
-      road_distances.push_back(pair(make_shared<string>(name), distance.AsInt()));
+    if (const auto& it = object.find("road_distances");
+        it != object.end()) {
+      const auto& road_distances_json = it->second.AsMap();
+      road_distances.reserve(road_distances_json.size());
+      for (const auto& [name, distance] : road_distances_json) {
+        road_distances.push_back(pair(make_shared<string>(name), distance.AsInt()));
+      }
     }
   }
 
-  void AddStopRequest::Execute(Routes& buses) const {
+  void AddStopRequest::Execute(Buses& buses) const {
     buses.AddStop(this);
   }
 
@@ -51,18 +55,15 @@ namespace Routes {
     const auto& object = node.AsMap();
     name = make_shared<string>(object.at("name").AsString());
     is_roundtrip = object.at("is_roundtrip").AsBool();
-    
+
     const auto& stops_json = object.at("stops").AsArray();
     stops.reserve(stops.size());
     for (const auto& name : stops_json) {
       stops.push_back(make_shared<string>(name.AsString()));
     }
-    if (is_roundtrip) {
-      stops.pop_back();
-    }
   }
 
-  void AddBusRequest::Execute(Routes& buses) const {
+  void AddBusRequest::Execute(Buses& buses) const {
     buses.AddBus(this);
   }
 
@@ -88,16 +89,15 @@ namespace Routes {
     name = node.AsMap().at("name").AsString();
   }
 
-  ResponseHolder ReadRouteStatsRequest::Execute(const Routes& buses) const {
+  ResponseHolder ReadRouteStatsRequest::Execute(const Buses& buses) const {
     return make_unique<BusResponse>(id, buses.GetRouteStats(this));
   }
-
   void ReadStopBusesRequest::FromJson(const Node& node) {
     ReadRequest::FromJson(node);
     name = node.AsMap().at("name").AsString();
   }
 
-  ResponseHolder ReadStopBusesRequest::Execute(const Routes& buses) const {
+  ResponseHolder ReadStopBusesRequest::Execute(const Buses& buses) const {
     return make_unique<StopResponse>(id, buses.GetStopBuses(this));
   }
 
@@ -107,7 +107,7 @@ namespace Routes {
     to = node.AsMap().at("to").AsString();
   }
 
-  ResponseHolder ReadRouteRequest::Execute(const Routes& buses) const {
+  ResponseHolder ReadRouteRequest::Execute(const Buses& buses) const {
     return make_unique<RouteResponse>(id, buses.GetRoute(this));
   }
 
@@ -149,11 +149,17 @@ namespace Routes {
   }
 
   void RouteResponse::FillJson(Node& node) const {
-    (void)node;
-    //auto& object_map = node.AsMap();
+    auto& object_map = node.AsMap();
+    auto& json_items = object_map["items"].AsArray();
+    Time total_time = 0;
+    for (const auto& item : *items) {
+      json_items.push_back(item->ToJson());
+      total_time += item->GetTime();
+    }
+    object_map["total_time"] = total_time;
   }
 
   bool RouteResponse::Empty() const {
-    return route_info == nullopt;
+    return items == nullopt;
   }
 }
