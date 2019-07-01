@@ -1,8 +1,8 @@
 #pragma once
 
 #include "json.h"
-#include "router.h"
-#include "graph.h"
+#include "util.h"
+#include "buses.h"
 
 #include <iostream>
 #include <memory>
@@ -13,13 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace Routes {
-  using StringHolder = std::shared_ptr<const std::string>;
-  using Time = double;
-
-  using StopBuses = std::set<std::string_view>;
-  using StopBusesHolder = std::shared_ptr<StopBuses>;
-
+namespace BusesRouting {
   template <typename Request>
   std::optional<typename Request::Type> ConvertRequestTypeFromString(std::string_view type_str) {
     if (const auto it = Request::STR_TO_REQUEST_TYPE.find(type_str);
@@ -77,26 +71,26 @@ namespace Routes {
     BUS
   };
 
-  class Routes;
+  class Buses;
 
   class ModifyRequest;
   using ModifyRequestHolder = std::unique_ptr<ModifyRequest>;
 
-  class ModifyRequest : public ::Routes::Request<ModifyRequestType> {
+  class ModifyRequest : public ::BusesRouting::Request<ModifyRequestType> {
   public:
     using Type = ModifyRequestType;
     using Request::Request;
     static const std::unordered_map<std::string_view, Type> STR_TO_REQUEST_TYPE;
     static ModifyRequestHolder Create(Type type);
-    virtual void Execute(Routes& buses) const = 0;
+    virtual void Execute(Buses& buses) const = 0;
   };
 
   class AddStopRequest final : public ModifyRequest {
   public:
-    friend class Routes;
+    friend class Buses;
     AddStopRequest() : ModifyRequest(Type::STOP) {}
     void FromJson(const Json::Node& node) override;
-    void Execute(Routes& buses) const override;
+    void Execute(Buses& buses) const override;
   private:
     StringHolder name;
     double latitude;
@@ -106,22 +100,14 @@ namespace Routes {
 
   class AddBusRequest final : public ModifyRequest {
   public:
-    friend class Routes;
+    friend class Buses;
     AddBusRequest() : ModifyRequest(Type::BUS) {}
     void FromJson(const Json::Node& node) override;
-    void Execute(Routes& buses) const override;
+    void Execute(Buses& buses) const override;
   private:
     StringHolder name;
     bool is_roundtrip;
     std::vector<StringHolder> stops;
-  };
-
-  class JsonSerializable {
-  public:
-    virtual Json::Node ToJson() const = 0;
-    virtual ~JsonSerializable() = default;
-  private:
-    virtual void FillJson(Json::Node& node) const = 0;
   };
 
   class Response : public JsonSerializable {
@@ -134,8 +120,17 @@ namespace Routes {
     const int id;
   };
 
-  struct BusStats;
-  using BusStatsHolder = std::shared_ptr<const BusStats>;
+  struct BusStats {
+    BusStats(const Bus& bus) :
+      stop_count(bus.GetStopCount()),
+      unique_stop_count(bus.GetUniqueStopCount()),
+      route_length(bus.GetLengthByStops()),
+      curvature(route_length / bus.GetDirectLength()) {}
+    const size_t stop_count;
+    const size_t unique_stop_count;
+    const int route_length;
+    const double curvature;
+  };
 
   class BusResponse final : public Response {
   public:
@@ -151,7 +146,7 @@ namespace Routes {
   class StopResponse final : public Response {
   public:
     StopResponse(int id, StopBusesHolder buses) :
-      Response(id),
+       Response(id),
       buses(buses) {}
   private:
     bool Empty() const override;
@@ -159,60 +154,15 @@ namespace Routes {
     const StopBusesHolder buses;
   };
 
-  using Route = std::optional<Graph::Router<Time>::RouteInfo>;
-
-  enum RouteItemType {
-    WAIT,
-    BUS
-  };
-
-  class RouteItem;
-  using RouteItemHolder = std::shared_ptr<RouteItem>;
-
-  class RouteItem : public JsonSerializable {
-  public:
-    RouteItem(RouteItemType type, Time time) :
-      type(type),
-      time(time) {}
-    virtual bool IsCombinableWith(RouteItemHolder other) const = 0;
-    Json::Node ToJson() const override;
-  private:
-    RouteItemType type;
-    Time time;
-  };
-
-  using RouteItems = std::optional<std::vector<RouteItemHolder>>;
-
-  class WaitRouteItem final : public RouteItem {
-  public:
-    WaitRouteItem(StopHolder stop, Time time) :
-      RouteItem(RouteItemType::WAIT, time),
-      stop(stop) {}
-  private:
-    void FillJson(Json::Node& node) const override;
-    StopHolder stop;
-  };
-
-  class BusRouteItem final : public RouteItem {
-  public:
-    BusRouteItem(BusHolder bus, Time time) :
-      RouteItem(RouteItemType::BUS, time),
-      bus(bus) {}
-  private:
-    void FillJson(Json::Node& node) const override;
-    BusHolder bus;
-  };
-
   class RouteResponse final : public Response {
   public:
-    RouteResponse(int id, RouteItems items) :
+    RouteResponse(int id, RouteItemHolders items) :
       Response(id),
       items(move(items)) {}
   private:
     bool Empty() const override;
     void FillJson(Json::Node& node) const override;
-    const double total_time;
-    RouteItems items;
+    RouteItemHolders items;
   };
 
   enum class ReadRequestType {
@@ -233,37 +183,37 @@ namespace Routes {
     static const std::unordered_map<std::string_view, Type> STR_TO_REQUEST_TYPE;
     static ReadRequestHolder Create(Type type);
     virtual void FromJson(const Json::Node& node) override;
-    virtual ResponseHolder Execute(const Routes& buses) const = 0;
+    virtual ResponseHolder Execute(const Buses& buses) const = 0;
   protected:
     int id;
   };
 
   class ReadRouteStatsRequest final : public ReadRequest {
   public:
-    friend class Routes;
+    friend class Buses;
     ReadRouteStatsRequest() : ReadRequest(Type::BUS) {}
     void FromJson(const Json::Node& node) override;
-    ResponseHolder Execute(const Routes& buses) const override;
+    ResponseHolder Execute(const Buses& buses) const override;
   private:
     std::string name;
   };
 
   class ReadStopBusesRequest final : public ReadRequest {
   public:
-    friend class Routes;
+    friend class Buses;
     ReadStopBusesRequest() : ReadRequest(Type::STOP) {}
     void FromJson(const Json::Node& node) override;
-    ResponseHolder Execute(const Routes& buses) const override;
+    ResponseHolder Execute(const Buses& buses) const override;
   private:
     std::string name;
   };
 
   class ReadRouteRequest final : public ReadRequest {
   public:
-    friend class Routes;
+    friend class Buses;
     ReadRouteRequest() : ReadRequest(Type::ROUTE) {}
     void FromJson(const Json::Node& node) override;
-    ResponseHolder Execute(const Routes& buses) const override;
+    ResponseHolder Execute(const Buses& buses) const override;
   private:
     std::string from;
     std::string to;
