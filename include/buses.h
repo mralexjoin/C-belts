@@ -51,9 +51,11 @@ namespace BusesRouting {
     double GetDirectLength() const;
     const std::string& GetName() const { return *name; }
     const std::vector<StopHolder>& GetStops() { return stops; }
+    bool IsRoundtrip() const { return is_roundtrip; }
   private:
     const StringHolder name;
     std::vector<StopHolder> stops;
+    const bool is_roundtrip;
     mutable BusStatsHolder route_stats;
   };
 

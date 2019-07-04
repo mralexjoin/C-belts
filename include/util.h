@@ -8,6 +8,25 @@
 #include <vector>
 
 namespace BusesRouting {
+  template <typename It>
+  class PairRange {
+  public:
+    using ValueType = typename std::iterator_traits<It>::value_type;
+
+    PairRange(It begin, It end) {
+      for (auto lhs = begin, rhs = next(lhs);
+           rhs != end;
+           lhs = rhs, rhs = next(rhs)) {
+        pairs.push_back({ *lhs, *rhs });
+      }
+    }
+    auto begin() const { return pairs.begin(); }
+    auto end() const { return pairs.end(); }
+
+  private:
+    std::vector<std::pair<const ValueType&, const ValueType&>> pairs;
+  };
+
   struct Stop;
   using StopHolder = std::shared_ptr<Stop>;
 

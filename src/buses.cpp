@@ -84,38 +84,52 @@ namespace BusesRouting {
     return nullptr;
   }
 
-  Bus::Bus(StringHolder name_, vector<StopHolder> stops_, bool is_roundtrip) :
+  Bus::Bus(StringHolder name_, vector<StopHolder> stops_, bool is_roundtrip_) :
     name(name_),
-    stops(move(stops_)) {
+    stops(move(stops_)),
+    is_roundtrip(is_roundtrip_) {
     const auto& str_name = *name;
     for (const auto& stop : stops) {
       stop->AddBus(str_name);
     }
-    if (!is_roundtrip && !stops.empty()) {
-      stops.reserve(2 * stops.size() - 1);
-      for (size_t i = stops.size() - 1; i > 0; --i) {
-        stops.push_back(stops[i - 1]);
-      }
+    if (is_roundtrip && !stops.empty()) {
+      stops.pop_back();
     }
   }
 
   int Bus::GetLengthByStops() const {
     int length = 0;
-    for (auto from_stop = stops.begin(), to_stop = next(from_stop);
-        to_stop != stops.end();
-        from_stop = next(from_stop), to_stop = next(to_stop)) {
-      length += (*from_stop)->GetDistance(*to_stop);
+    auto range = PairRange(stops.begin(), stops.end());
+    for (const auto& [from_stop, to_stop] : PairRange(stops.begin(), stops.end())) {
+      length += from_stop->GetDistance(to_stop);
+    }
+    if (is_roundtrip && !stops.empty()) {
+      length += stops.back()->GetDistance(stops.front());
+    }
+    else {
+      for (const auto& [from_stop, to_stop] : PairRange(stops.rbegin(), stops.rend())) {
+        length += from_stop->GetDistance(to_stop);
+      }
     }
     return length;
   }
 
   double Bus::GetDirectLength() const {
     double length = 0;
-    for (auto from_stop = stops.begin(), to_stop = next(from_stop);
-        to_stop != stops.end();
-        from_stop = next(from_stop), to_stop = next(to_stop)) {
-      length += DistanceBetweenPositions((*from_stop)->GetPosition(),
-                                         (*to_stop)->GetPosition());
+    auto range = PairRange(stops.begin(), stops.end());
+    for (const auto& [from_stop, to_stop] : PairRange(stops.begin(), stops.end())) {
+      length += DistanceBetweenPositions(from_stop->GetPosition(),
+                                         to_stop->GetPosition());
+    }
+    if (is_roundtrip && !stops.empty()) {
+      length += DistanceBetweenPositions(stops.back()->GetPosition(),
+                                         stops.front()->GetPosition());
+    }
+    else {
+      for (const auto& [from_stop, to_stop] : PairRange(stops.rbegin(), stops.rend())) {
+        length += DistanceBetweenPositions(from_stop->GetPosition(),
+                                           to_stop->GetPosition());
+      }
     }
     return length;
   }
@@ -129,7 +143,7 @@ namespace BusesRouting {
   }
 
   size_t Bus::GetStopCount() const {
-    return stops.size();
+    return is_roundtrip ? stops.size() + 1 : 2 * stops.size() - 1;
   }
 
   BusStatsHolder Bus::GetRouteStats() const {
@@ -141,39 +155,43 @@ namespace BusesRouting {
 
   void Buses::BuildRouter() {
     size_t vertexes_count = vertexes.size();
+    graph = make_unique<Graph::DirectedWeightedGraph<Time>>(2 * vertexes_count);
+
     for (const auto& [name, bus] : buses) {
-      vertexes_count += bus->GetStopCount();
-    }
-    graph = make_unique<Graph::DirectedWeightedGraph<Time>>(vertexes_count);
-
-    double wait_time = static_cast<double>(bus_wait_time);
-
-    Graph::VertexId vertex_id = vertexes.size();
-    for (const auto& [name, bus] : buses) {
-
-      Graph::VertexId start_id = vertex_id;
-
       const auto& bus_stops = bus->GetStops();
-
-      for (const auto& stop : bus_stops) {
-        edges.push_back(make_shared<WaitRouteItem>(stop, wait_time));
-        graph->AddEdge({ stop->GetVertexId(), vertex_id, wait_time });
-
+      for (size_t from_index = 0; from_index < bus_stops.size(); ++from_index) {
+        Graph::VertexId from_vertex_id = vertexes_count + bus_stops[from_index]->GetVertexId();
+        Time move_time = 0;
         edges.push_back(make_shared<EmptyRouteItem>());
-        graph->AddEdge({ vertex_id, stop->GetVertexId(), 0 });
-        ++vertex_id;
+        graph->AddEdge({
+            from_vertex_id,
+            bus_stops[from_index]->GetVertexId(),
+            move_time
+          });
+        for (size_t to_index = from_index + 1;
+             to_index < bus_stops.size();
+             ++to_index) {
+          move_time += bus_stops[to_index - 1]->GetDistance(bus_stops[to_index]) / bus_velocity;
+          edges.push_back(make_shared<BusRouteItem>(bus, move_time, to_index - from_index));
+          graph->AddEdge({ from_vertex_id, bus_stops[to_index]->GetVertexId(), move_time });
+        }
+        if (bus->IsRoundtrip() && !bus_stops.empty()) {
+          move_time += bus_stops.back()->GetDistance(bus_stops.front()) / bus_velocity;
+          edges.push_back(make_shared<BusRouteItem>(bus, move_time, bus_stops.size() - from_index));
+          graph->AddEdge({ from_vertex_id, bus_stops.front()->GetVertexId(), move_time });
+        }
+        else {
+          for (int64_t to_index = from_index - 1;
+               to_index >= 0;
+               --to_index) {
+            move_time += bus_stops[to_index + 1]->GetDistance(bus_stops[to_index]) / bus_velocity;
+            edges.push_back(make_shared<BusRouteItem>(bus, move_time, from_index - to_index));
+            graph->AddEdge({ from_vertex_id, bus_stops[to_index]->GetVertexId(), move_time });
+          }
+        }
       }
-      vertex_id = start_id;
-      for (auto from_stop = bus_stops.begin(), to_stop = next(from_stop);
-           to_stop != bus_stops.end();
-           from_stop = next(from_stop), to_stop = next(to_stop)) {
-        auto move_time = (*from_stop)->GetDistance(*to_stop) / bus_velocity;
-        edges.push_back(make_shared<BusRouteItem>(bus, move_time, 1));
-        graph->AddEdge({ vertex_id, vertex_id + 1, move_time });
-        ++vertex_id;
-      }
-      ++vertex_id;
     }
+
     router = make_unique<Graph::Router<Time>>(*graph);
   }
 
@@ -190,7 +208,9 @@ namespace BusesRouting {
         edge = edge->Combine(items.back());
         items.pop_back();
       }
-      items.push_back(edge);
+      if (edge->GetType() != RouteItemType::EMPTY) {
+        items.push_back(edge);
+      }
     }
     router->ReleaseRoute(route->id);
     return items;
