@@ -192,12 +192,19 @@ namespace BusesRouting {
       }
     }
 
+    Time wait_time = static_cast<Time>(bus_wait_time);
+    for (const auto& [name, stop] : stops) {
+      edges.push_back(make_shared<WaitRouteItem>(stop, wait_time));
+      graph->AddEdge({ stop->GetVertexId(), vertexes_count + stop->GetVertexId(), wait_time });
+    }
+
     router = make_unique<Graph::Router<Time>>(*graph);
   }
 
   RouteItemHolders Buses::GetRoute(const ReadRouteRequest* request) const {
-    auto route = router->BuildRoute(stops.at(request->from)->GetVertexId(),
-                                    stops.at(request->to)->GetVertexId());
+    Graph::VertexId from = stops.at(request->from)->GetVertexId();
+    Graph::VertexId to = stops.at(request->to)->GetVertexId();
+    auto route = router->BuildRoute(from, to);
     if (!route) {
       return nullopt;
     }

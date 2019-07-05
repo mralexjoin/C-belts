@@ -3,6 +3,7 @@
 #include "requests.h"
 #include "profile.h"
 
+#include <conio.h>
 #include <iostream>
 #include <sstream>
 
@@ -945,19 +946,19 @@ void TestThird() {
 
 void RunTests() {
   TestRunner tr;
-  RUN_TEST(tr, TestJson);
-  RUN_TEST(tr, TestBusLeak);
-  RUN_TEST(tr, TestFromTask);
-  RUN_TEST(tr, TestSecondSimple);
+  //RUN_TEST(tr, TestJson);
+  //RUN_TEST(tr, TestBusLeak);
+  //RUN_TEST(tr, TestFromTask);
+  //RUN_TEST(tr, TestSecondSimple);
   RUN_TEST(tr, TestSimpleRoute);
-  RUN_TEST(tr, TestFirst);
-  RUN_TEST(tr, TestSecond);
-  RUN_TEST(tr, TestThird);
+  //RUN_TEST(tr, TestFirst);
+  //RUN_TEST(tr, TestSecond);
+  //RUN_TEST(tr, TestThird);
 }
 
 int main() {
   ADD_DURATION(dur_full);
   RunTests();
-ProcessQueries(cin, cout);
+  ProcessQueries(cin, cout);
   return 0;
 }
