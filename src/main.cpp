@@ -1,22 +1,22 @@
 #include "test_runner.h"
 #include "buses.h"
 #include "requests.h"
-#include "profile.h"
+//#include "profile.h"
 
-#include <conio.h>
+//#include <conio.h>
 #include <iostream>
 #include <sstream>
 
 using namespace std;
 using namespace Json;
 
-TotalDuration dur_create_buses("Create buses");
-TotalDuration dur_full("Full duration");
-TotalDuration dur_build_router("Build router");
-TotalDuration dur_read_routes("Read routes");
+//TotalDuration dur_create_buses("Create buses");
+//TotalDuration dur_full("Full duration");
+//TotalDuration dur_build_router("Build router");
+//TotalDuration dur_read_routes("Read routes");
 
 BusesRouting::Buses CreateRoutes(Document& document) {
-  ADD_DURATION(dur_create_buses);
+  //ADD_DURATION(dur_create_buses);
   BusesRouting::Buses buses;
   auto& requests_by_type = document.GetRoot().AsMap();
   if (const auto& settings_node = requests_by_type.find("routing_settings");
@@ -31,19 +31,19 @@ BusesRouting::Buses CreateRoutes(Document& document) {
       request->Execute(buses);
     }
   }
-  ADD_DURATION(dur_build_router);
+  //ADD_DURATION(dur_build_router);
   buses.BuildRouter();
   return buses;
 }
 
 Document ReadRoutes(const BusesRouting::Buses& buses, Document& document) {
-  ADD_DURATION(dur_read_routes);
+  //ADD_DURATION(dur_read_routes);
   auto& requests_by_type = document.GetRoot().AsMap();
   vector<Node> requests_node;
   if (const auto& requests = requests_by_type.find("stat_requests");
       requests != requests_by_type.end()) {
     for (const auto& request : BusesRouting::ReadRequests<BusesRouting::ReadRequest>(requests->second)) {
-      requests_node.push_back(request->Execute(buses)->ToJson());
+      requests_node.emplace_back(request->Execute(buses)->ToJson());
     }
   }
   return Document{move(requests_node)};
@@ -946,18 +946,18 @@ void TestThird() {
 
 void RunTests() {
   TestRunner tr;
-  //RUN_TEST(tr, TestJson);
-  //RUN_TEST(tr, TestBusLeak);
-  //RUN_TEST(tr, TestFromTask);
-  //RUN_TEST(tr, TestSecondSimple);
+  RUN_TEST(tr, TestJson);
+  RUN_TEST(tr, TestBusLeak);
+  RUN_TEST(tr, TestFromTask);
+  RUN_TEST(tr, TestSecondSimple);
   RUN_TEST(tr, TestSimpleRoute);
-  //RUN_TEST(tr, TestFirst);
-  //RUN_TEST(tr, TestSecond);
-  //RUN_TEST(tr, TestThird);
+  RUN_TEST(tr, TestFirst);
+  RUN_TEST(tr, TestSecond);
+  RUN_TEST(tr, TestThird);
 }
 
 int main() {
-  ADD_DURATION(dur_full);
+  //ADD_DURATION(dur_full);
   RunTests();
   ProcessQueries(cin, cout);
   return 0;

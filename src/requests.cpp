@@ -1,4 +1,5 @@
 #include "requests.h"
+//#include "profile.h"
 
 #include <algorithm>
 #include <numeric>
@@ -7,6 +8,12 @@
 
 using namespace std;
 using namespace Json;
+
+//TotalDuration dur_ReadStopBusesRequest("ReadStopBusesRequest");
+//TotalDuration dur_ReadRouteRequest("ReadRouteRequest");
+//TotalDuration dur_ReadRouteStatsRequest("ReadRouteStatsRequest");
+//TotalDuration dur_FromJson("FromJson");
+//TotalDuration dur_ToJson("ToJson");
 
 namespace BusesRouting {
   const std::unordered_map<std::string_view, ModifyRequest::Type> ModifyRequest::STR_TO_REQUEST_TYPE = {
@@ -90,6 +97,7 @@ namespace BusesRouting {
   }
 
   ResponseHolder ReadRouteStatsRequest::Execute(const Buses& buses) const {
+    //ADD_DURATION(dur_ReadRouteStatsRequest);
     return make_unique<BusResponse>(id, buses.GetRouteStats(this));
   }
   void ReadStopBusesRequest::FromJson(const Node& node) {
@@ -98,20 +106,24 @@ namespace BusesRouting {
   }
 
   ResponseHolder ReadStopBusesRequest::Execute(const Buses& buses) const {
+    //ADD_DURATION(dur_ReadStopBusesRequest);
     return make_unique<StopResponse>(id, buses.GetStopBuses(this));
   }
 
   void ReadRouteRequest::FromJson(const Node& node) {
+    //ADD_DURATION(dur_FromJson);
     ReadRequest::FromJson(node);
     from = node.AsMap().at("from").AsString();
     to = node.AsMap().at("to").AsString();
   }
 
   ResponseHolder ReadRouteRequest::Execute(const Buses& buses) const {
+    //ADD_DURATION(dur_ReadRouteRequest);
     return make_unique<RouteResponse>(id, buses.GetRoute(this));
   }
 
   Node Response::ToJson() const {
+    //ADD_DURATION(dur_ToJson);
     Node object = Node(map<string, Node>({ { "request_id", id } }));
     if (!Empty()) {
       FillJson(object);
@@ -143,7 +155,7 @@ namespace BusesRouting {
     vector<Node> stop_buses;
     stop_buses.reserve(buses->size());
     for (const auto& bus : *buses) {
-      stop_buses.push_back(string(bus));
+      stop_buses.emplace_back(string(bus));
     }
     object_map["buses"] = move(stop_buses);
   }
@@ -153,7 +165,7 @@ namespace BusesRouting {
     auto& json_items = object_map["items"].AsArray();
     Time total_time = 0;
     for (const auto& item : *items) {
-      json_items.push_back(item->ToJson());
+      json_items.emplace_back(item->ToJson());
       total_time += item->GetTime();
     }
     object_map["total_time"] = total_time;

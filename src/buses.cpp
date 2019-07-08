@@ -1,12 +1,8 @@
-#include "profile.h"
-
 #include "buses.h"
 #include "requests.h"
 
 #include <cmath>
 #include <unordered_set>
-
-TotalDuration dur_create_edges("Create edges");
 
 namespace BusesRouting {
   using namespace std;
@@ -219,7 +215,6 @@ namespace BusesRouting {
         items.push_back(edge);
       }
     }
-    router->ReleaseRoute(route->id);
     return items;
   }
 

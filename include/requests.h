@@ -49,7 +49,7 @@ namespace BusesRouting {
 
     for (const auto& request_json : requests_json) {
       if (auto request = ParseRequest<Request>(request_json)) {
-        requests.push_back(move(request));
+        requests.emplace_back(move(request));
       }
     }
 
