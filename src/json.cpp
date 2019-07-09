@@ -144,7 +144,7 @@ namespace Json {
     }
     output << ']';
   }
-  
+
   void Node::NodeVisitor::operator()(const map<string, Node>& node) {
     output << '{';
     if (!node.empty()) {
@@ -172,11 +172,11 @@ namespace Json {
   void Node::NodeVisitor::operator()(const string& node) {
     output << '"' << node << '"';
   }
-    
+
   void Node::NodeVisitor::operator()(double node) {
     output << node;
   }
-  
+
   void Node::NodeVisitor::operator()(bool node) {
     output << node;
   }

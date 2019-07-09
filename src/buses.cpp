@@ -177,6 +177,7 @@ namespace BusesRouting {
           graph->AddEdge({ from_vertex_id, bus_stops.front()->GetVertexId(), move_time });
         }
         else {
+          move_time = 0;
           for (int64_t to_index = from_index - 1;
                to_index >= 0;
                --to_index) {
