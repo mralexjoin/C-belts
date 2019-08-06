@@ -134,4 +134,5 @@ namespace Graph {
   void Router<Weight>::ReleaseRoute(RouteId route_id) {
     expanded_routes_cache_.erase(route_id);
   }
+
 }

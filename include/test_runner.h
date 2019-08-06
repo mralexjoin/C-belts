@@ -62,18 +62,6 @@ void AssertEqual(const T& t, const U& u, const std::string& hint = {}) {
   }
 }
 
-template<class T>
-void AssertNear(const T& t, const T& u, const T& accuracy, const std::string& hint = {}) {
-  if (t < u - accuracy || t > u + accuracy) {
-    std::ostringstream os;
-    os << "Assertion failed: " << t << " != " << u;
-    if (!hint.empty()) {
-      os << " hint: " << hint;
-    }
-    throw std::runtime_error(os.str());
-  }
-}
-
 inline void Assert(bool b, const std::string& hint) {
   AssertEqual(b, true, hint);
 }
@@ -111,13 +99,6 @@ private:
                  << __FILE__ << ":" << __LINE__;    \
     AssertEqual(x, y, _special_var.str());          \
 }
-
-#define ASSERT_NEAR(x, y, accuracy) {               \
-    std::ostringstream _special_var;                \
-    _special_var << #x << " != " << #y << ", "      \
-                 << __FILE__ << ":" << __LINE__;    \
-    AssertNear(x, y, accuracy, _special_var.str()); \
-  }
 
 #define ASSERT(x) {                                 \
     std::ostringstream _special_var;                \

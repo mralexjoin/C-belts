@@ -1,19 +1,8 @@
 #include "json.h"
-#include <algorithm>
-#include <stdexcept>
 
 using namespace std;
 
 namespace Json {
-
-  Document::Document(Node root) : root(move(root)) {
-  }
-
-  const Node& Document::GetRoot() const {
-    return root;
-  }
-
-  Node LoadNode(istream& input);
 
   Node LoadArray(istream& input) {
     vector<Node> result;
@@ -28,26 +17,36 @@ namespace Json {
     return Node(move(result));
   }
 
-  Node LoadNumber(istream& input) {
-    int coeff = 1;
-    if (input.peek() == '-') {
-      input.get();
-      coeff = -1;
+  Node LoadBool(istream& input) {
+    string s;
+    while (isalpha(input.peek())) {
+      s.push_back(input.get());
     }
-    int int_result = 0;
+    return Node(s == "true");
+  }
+
+  Node LoadNumber(istream& input) {
+    bool is_negative = false;
+    if (input.peek() == '-') {
+      is_negative = true;
+      input.get();
+    }
+    int int_part = 0;
     while (isdigit(input.peek())) {
-      int_result *= 10;
-      int_result += input.get() - '0';
+      int_part *= 10;
+      int_part += input.get() - '0';
     }
     if (input.peek() != '.') {
-      return Node(coeff * int_result);
+      return Node(int_part * (is_negative ? -1 : 1));
     }
-    input.get();
-    double double_result = int_result;
-    for (double denominator = 10; isdigit(input.peek()); denominator *= 10) {
-      double_result += (input.get() - '0') / denominator;
+    input.get();  // '.'
+    double result = int_part;
+    double frac_mult = 0.1;
+    while (isdigit(input.peek())) {
+      result += frac_mult * (input.get() - '0');
+      frac_mult /= 10;
     }
-    return Node(coeff * double_result);
+    return Node(result * (is_negative ? -1 : 1));
   }
 
   Node LoadString(istream& input) {
@@ -56,28 +55,8 @@ namespace Json {
     return Node(move(line));
   }
 
-  Node LoadBool(istream& input) {
-    constexpr size_t TRUE_SIZE = 4;
-    constexpr size_t FALSE_SIZE = 5;
-    string str(TRUE_SIZE, ' ');
-    for (size_t i = 0; i < TRUE_SIZE; ++i) {
-      input >> str[i];
-    }
-    if (str == "true") {
-      return Node(true);
-    }
-    str.resize(FALSE_SIZE, ' ');
-    for (size_t i = TRUE_SIZE; i < FALSE_SIZE; ++i) {
-      input >> str[i];
-    }
-    if (str == "false") {
-      return Node(false);
-    }
-    throw invalid_argument("Error when parsing bool, string = " + str);
-  }
-
   Node LoadDict(istream& input) {
-    map<string, Node> result;
+    Dict result;
 
     for (char c; input >> c && c != '}'; ) {
       if (c == ',') {
@@ -115,75 +94,53 @@ namespace Json {
     return Document{LoadNode(input)};
   }
 
-  void Node::Save(ostream& output) const {
-    visit(NodeVisitor(output), static_cast<NodeType>(*this));
+  template <>
+  void PrintValue<string>(const string& value, ostream& output) {
+    output << '"' << value << '"';
   }
 
-  void Node::NodeVisitor::NewLine() const {
-    output << '\n';
-    for (size_t i = 0;  i < 2 * offset; ++i) {
-      output << ' ';
-    }
+  template <>
+  void PrintValue<bool>(const bool& value, std::ostream& output) {
+    output << std::boolalpha << value;
   }
 
-  void Node::NodeVisitor::operator()(const vector<Node>& node) {
+  template <>
+  void PrintValue<std::vector<Node>>(const std::vector<Node>& nodes, std::ostream& output) {
     output << '[';
-    if (!node.empty()) {
-      ++offset;
-      bool first = true;
-      for (const auto& item : node) {
-        if (!first) {
-          output << ',';
-        }
-        first = false;
-        NewLine();
-        visit(*this, static_cast<NodeType>(item));
+    bool first = true;
+    for (const Node& node : nodes) {
+      if (!first) {
+        output << ", ";
       }
-      --offset;
-      NewLine();
+      first = false;
+      PrintNode(node, output);
     }
     output << ']';
   }
 
-  void Node::NodeVisitor::operator()(const map<string, Node>& node) {
+  template <>
+  void PrintValue<Dict>(const Dict& dict, std::ostream& output) {
     output << '{';
-    if (!node.empty()) {
-      ++offset;
-      bool first = true;
-      for (const auto& [key, value] : node) {
-        if (!first) {
-          output << ',';
-        }
-        first = false;
-        NewLine();
-        output << '"' << key << "\": ";
-        visit(*this, static_cast<NodeType>(value));
+    bool first = true;
+    for (const auto& [key, node]: dict) {
+      if (!first) {
+        output << ", ";
       }
-      --offset;
-      NewLine();
+      first = false;
+      PrintValue(key, output);
+      output << ": ";
+      PrintNode(node, output);
     }
     output << '}';
   }
 
-  void Node::NodeVisitor::operator()(int node) {
-    output << node;
+  void PrintNode(const Json::Node& node, ostream& output) {
+    visit([&output](const auto& value) { PrintValue(value, output); },
+          node.GetBase());
   }
 
-  void Node::NodeVisitor::operator()(const string& node) {
-    output << '"' << node << '"';
+  void Print(const Document& document, ostream& output) {
+    PrintNode(document.GetRoot(), output);
   }
 
-  void Node::NodeVisitor::operator()(double node) {
-    output << node;
-  }
-
-  void Node::NodeVisitor::operator()(bool node) {
-    output << node;
-  }
-
-  void Save(const Document& document, ostream& output) {
-    output << boolalpha;
-    output.precision(6);
-    document.GetRoot().Save(output);
-  }
 }
