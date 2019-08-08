@@ -30,8 +30,9 @@ class TransportCatalog {
 private:
   using Bus = Responses::Bus;
   using Stop = Responses::Stop;
+
+  friend class Rendering::Renderer;
   using Renderer = Rendering::Renderer;
-  friend class Renderer;
 public:
   TransportCatalog(std::vector<Descriptions::InputQuery> data,
                    const Json::Dict& routing_settings_json,

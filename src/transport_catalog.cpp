@@ -36,7 +36,7 @@ TransportCatalog::TransportCatalog(vector<Descriptions::InputQuery> data,
     }
   }
 
-  renderer_ = make_unique<Renderer>(render_settings_json);
+  renderer_ = make_unique<Renderer>(stops_dict, buses_dict, render_settings_json);
   router_ = make_unique<TransportRouter>(stops_dict, buses_dict, routing_settings_json);
 }
 
@@ -77,5 +77,5 @@ double TransportCatalog::ComputeGeoRouteDistance(
 }
 
 string TransportCatalog::RenderMap() const {
-  return renderer_->Render(*this);
+  return renderer_->Render();
 }

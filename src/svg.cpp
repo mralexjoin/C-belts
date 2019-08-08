@@ -177,4 +177,7 @@ namespace Svg {
     out << "</svg>";
   }
 
+  template class PathProps<Circle>;
+  template class PathProps<Polyline>;
+  template class PathProps<Text>;
 }
