@@ -12,7 +12,7 @@ namespace Rendering {
   using namespace Descriptions;
 
   using StopsPoints = std::map<std::string, Svg::Point>;
-  using ColorPallete = std::vector<Svg::Color>;
+  using ColorPalette = std::vector<Svg::Color>;
 
   Svg::Point ParsePoint(const vector<Json::Node>& value) {
     return { value[0].AsDouble(), value[1].AsDouble() };
@@ -39,13 +39,13 @@ namespace Rendering {
                  color_json.GetBase());
   }
 
-  vector<Svg::Color> ParseColorPallete(const vector<Json::Node>& colors) {
-    vector<Svg::Color> pallete;
-    pallete.reserve(colors.size());
+  vector<Svg::Color> ParseColorPalette(const vector<Json::Node>& colors) {
+    vector<Svg::Color> palette;
+    palette.reserve(colors.size());
     for (const auto& color : colors) {
-      pallete.push_back(ParseColor(color));
+      palette.push_back(ParseColor(color));
     }
-    return pallete;
+    return palette;
   }
 
   template <typename PropertyType, PropertyType Sphere::Point::*property>
@@ -54,10 +54,12 @@ namespace Rendering {
       return {0, 0};
     }
 
+    using ItemType = StopsDict::const_iterator::value_type;
+
     const auto& [min_property, max_property] = minmax_element(
         begin(stops_dict),
         end(stops_dict),
-        [](const auto& lhs, const auto& rhs) {
+        [](const ItemType& lhs, const ItemType& rhs) {
           return lhs.second->position.*property < rhs.second->position.*property;
         }
     );
@@ -95,8 +97,8 @@ namespace Rendering {
         const auto& position = stop.second->position;
         return pair(stop.first,
           Svg::Point({
-              (position.longitude - min_lon)* zoom_coef + padding,
-              (max_lat - position.latitude)* zoom_coef + padding
+              (position.longitude - min_lon) * zoom_coef + padding,
+              (max_lat - position.latitude) * zoom_coef + padding
             })
         );
       }
@@ -107,7 +109,7 @@ namespace Rendering {
   string RenderBusLines(
     const BusesDict& buses_dict,
     const StopsPoints& stop_points,
-    const ColorPallete& color_pallete,
+    const ColorPalette& color_palette,
     double stroke_width) {
 
     const auto buses_size = buses_dict.size();
@@ -125,6 +127,7 @@ namespace Rendering {
       [](const string* lhs, const string* rhs) { return *lhs < *rhs; });
 
     ostringstream out;
+    out.precision(16);
 
     for (size_t bus_num = 0; bus_num < buses_size; ++bus_num) {
       Svg::Polyline bus_line;
@@ -132,7 +135,7 @@ namespace Rendering {
         bus_line.AddPoint(stop_points.at(stop));
       }
       bus_line
-        .SetStrokeColor(color_pallete[bus_num % color_pallete.size()])
+        .SetStrokeColor(color_palette[bus_num % color_palette.size()])
         .SetStrokeWidth(stroke_width)
         .SetStrokeLineCap("round")
         .Render(out);
@@ -142,6 +145,7 @@ namespace Rendering {
 
   string RenderStopRounds(const StopsPoints& stop_points, double stop_radius) {
     ostringstream out;
+    out.precision(16);
     for (const auto& [name, point] : stop_points) {
        Svg::Circle()
          .SetCenter(point)
@@ -161,6 +165,7 @@ namespace Rendering {
     double underlayer_width) {
 
     ostringstream out;
+    out.precision(16);
     for (const auto& [name, point] : stop_points) {
       auto underlayer = Svg::Text()
         .SetPoint(point)
@@ -200,7 +205,7 @@ namespace Rendering {
     objects[ObjectIndex(RenderedObjectsTypes::ROUTES)] = RenderBusLines(
       buses_dict,
       stops_points,
-      ParseColorPallete(renderer_settings_json.at("color_pallete").AsArray()),
+      ParseColorPalette(renderer_settings_json.at("color_palette").AsArray()),
       renderer_settings_json.at("line_width").AsDouble()
     );
 
@@ -225,15 +230,17 @@ namespace Rendering {
     for (size_t pos = 0, escaping_pos = 0;
          pos != str_view.npos;
          escaping_pos = str_view.find_first_of("\\\"", pos)) {
+      escaping_pos = str_view.find_first_of("\\\"", pos);
       if (escaping_pos == str_view.npos) {
         out << str_view.substr(pos);
+        pos = escaping_pos;
       }
       else {
-        out << str_view.substr(pos, escaping_pos - 1)
+        out << str_view.substr(pos, escaping_pos - pos)
           << '\\'
           << str_view[escaping_pos];
+        pos = escaping_pos + 1;
       }
-      pos = escaping_pos;
     }
     return out;
   }

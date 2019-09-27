@@ -16,7 +16,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (MSVC)
-  set(CMAKE_CXX_FLAGS "/Wall /std:c++latest")
+  set(CMAKE_CXX_FLAGS "/W3 /std:c++latest /Qspectre /EHsc")
   set(CMAKE_CXX_FLAGS_DEBUG "/Zi")
   set(CMAKE_CXX_FLAGS_RELEASE "/O2")
 else()

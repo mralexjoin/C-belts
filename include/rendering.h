@@ -48,7 +48,7 @@ namespace Rendering {
     Renderer(const Descriptions::StopsDict& stops_dict,
              const Descriptions::BusesDict& buses_dict,
              const Json::Dict& render_settings_json) :
-      rendered_objects(move(RenderObjects(stops_dict, buses_dict, render_settings_json))) {}
+      rendered_objects(RenderObjects(stops_dict, buses_dict, render_settings_json)) {}
     std::string Render() const;
   private:
     const RenderedObjects rendered_objects;

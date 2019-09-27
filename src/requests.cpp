@@ -76,15 +76,24 @@ namespace Requests {
     return dict;
   }
 
-  variant<Stop, Bus, Route> Read(const Json::Dict& attrs) {
+  Json::Dict Map::Process(const TransportCatalog& db) const {
+    Json::Dict dict;
+    dict["map"] = db.RenderMap();
+
+    return dict;
+  }
+
+  variant<Stop, Bus, Route, Map> Read(const Json::Dict& attrs) {
     const string& type = attrs.at("type").AsString();
     if (type == "Bus") {
       return Bus{attrs.at("name").AsString()};
     } else if (type == "Stop") {
       return Stop{attrs.at("name").AsString()};
-    } else {
+    } else if (type == "Route") {
       return Route{attrs.at("from").AsString(), attrs.at("to").AsString()};
-    }
+	  } else if (type == "Map") {
+	    return Map{};
+	  }
   }
 
   vector<Json::Node> ProcessAll(const TransportCatalog& db, const vector<Json::Node>& requests) {
