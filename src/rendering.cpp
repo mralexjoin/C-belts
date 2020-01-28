@@ -35,8 +35,7 @@ namespace Rendering {
   }
 
   Svg::Color ParseColor(const Json::Node& color_json) {
-    return visit([](const auto& color_json) { return ParseColor(color_json); },
-                 color_json.GetBase());
+    return visit(ParseColor, color_json.GetBase());
   }
 
   vector<Svg::Color> ParseColorPalette(const vector<Json::Node>& colors) {
